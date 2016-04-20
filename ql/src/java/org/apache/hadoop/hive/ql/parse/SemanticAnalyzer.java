@@ -566,7 +566,12 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       assert (expressionTree.getChildCount() != 0);
       if (expressionTree.getChild(expressionTree.getChildCount()-1).getType()
           == HiveParser.TOK_WINDOWSPEC) {
+        // If it is a windowing spec, we include it in the list
+        // Further, we will examine its children AST nodes to check whether
+        // there are aggregation functions within
         wdwFns.add(expressionTree);
+        doPhase1GetAllAggregations((ASTNode) expressionTree.getChild(expressionTree.getChildCount()-1),
+                aggregations, wdwFns);
         return;
       }
       if (expressionTree.getChild(0).getType() == HiveParser.Identifier) {
@@ -737,11 +742,11 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
         int seedNum = conf.getIntVar(ConfVars.HIVESAMPLERANDOMNUM);
         sample = new SplitSample(percent, seedNum);
       } else if (type.getType() == HiveParser.TOK_ROWCOUNT) {
-        sample = new SplitSample(Integer.valueOf(value));
+        sample = new SplitSample(Integer.parseInt(value));
       } else {
         assert type.getType() == HiveParser.TOK_LENGTH;
         assertCombineInputFormat(numerator, "Total Length");
-        long length = Integer.valueOf(value.substring(0, value.length() - 1));
+        long length = Integer.parseInt(value.substring(0, value.length() - 1));
         char last = value.charAt(value.length() - 1);
         if (last == 'k' || last == 'K') {
           length <<= 10;
@@ -2068,7 +2073,12 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
               Path location;
               try {
                 Warehouse wh = new Warehouse(conf);
-                location = wh.getDatabasePath(db.getDatabase(names[0]));
+                //Use destination table's db location.
+                String destTableDb = qb.getTableDesc() != null? qb.getTableDesc().getDatabaseName(): null;
+                if (destTableDb == null) {
+                  destTableDb = names[0];
+                }
+                location = wh.getDatabasePath(db.getDatabase(destTableDb));
               } catch (MetaException e) {
                 throw new SemanticException(e);
               }
@@ -10408,13 +10418,15 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
           throw new SemanticException("Table " + tabIdName + " is not found.");
         }
 
-        List<String> columns = new ArrayList<>();
+        List<String> colNames = new ArrayList<>();
+        List<String> colTypes = new ArrayList<>();
         for (FieldSchema col : table.getAllCols()) {
-          columns.add(col.getName());
+          colNames.add(col.getName());
+          colTypes.add(col.getType());
         }
         
-        basicInfos.put(new HivePrivilegeObject(table.getDbName(), table.getTableName(), columns),
-            new MaskAndFilterInfo(additionalTabInfo.toString(), alias, astNode));
+        basicInfos.put(new HivePrivilegeObject(table.getDbName(), table.getTableName(), colNames),
+            new MaskAndFilterInfo(colTypes, additionalTabInfo.toString(), alias, astNode));
       }
       if (astNode.getChildCount() > 0 && !ignoredTokens.contains(astNode.getToken().getType())) {
         for (Node child : astNode.getChildren()) {
@@ -11384,12 +11396,10 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       case HiveParser.TOK_ALTERTABLE_BUCKETS:
         bucketCols = getColumnNames((ASTNode) child.getChild(0));
         if (child.getChildCount() == 2) {
-          numBuckets = (Integer.valueOf(child.getChild(1).getText()))
-              .intValue();
+          numBuckets = Integer.parseInt(child.getChild(1).getText());
         } else {
           sortCols = getColumnNamesOrder((ASTNode) child.getChild(1));
-          numBuckets = (Integer.valueOf(child.getChild(2).getText()))
-              .intValue();
+          numBuckets = Integer.parseInt(child.getChild(2).getText());
         }
         break;
       case HiveParser.TOK_TABLEROWFORMAT:

@@ -310,26 +310,34 @@ public class LlapZookeeperRegistryImpl implements ServiceRegistry {
     private final int rpcPort;
     private final int mngPort;
     private final int shufflePort;
+    private final String serviceAddress;
 
     public DynamicServiceInstance(ServiceRecord srv) throws IOException {
       this.srv = srv;
 
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Working with ServiceRecord: {}", srv);
+      }
+
       final Endpoint shuffle = srv.getInternalEndpoint(IPC_SHUFFLE);
       final Endpoint rpc = srv.getInternalEndpoint(IPC_LLAP);
       final Endpoint mng = srv.getInternalEndpoint(IPC_MNG);
+      final Endpoint services = srv.getExternalEndpoint(IPC_SERVICES);
 
       this.host =
           RegistryTypeUtils.getAddressField(rpc.addresses.get(0),
               AddressTypes.ADDRESS_HOSTNAME_FIELD);
       this.rpcPort =
-          Integer.valueOf(RegistryTypeUtils.getAddressField(rpc.addresses.get(0),
+          Integer.parseInt(RegistryTypeUtils.getAddressField(rpc.addresses.get(0),
               AddressTypes.ADDRESS_PORT_FIELD));
       this.mngPort =
-          Integer.valueOf(RegistryTypeUtils.getAddressField(mng.addresses.get(0),
+          Integer.parseInt(RegistryTypeUtils.getAddressField(mng.addresses.get(0),
               AddressTypes.ADDRESS_PORT_FIELD));
       this.shufflePort =
-          Integer.valueOf(RegistryTypeUtils.getAddressField(shuffle.addresses.get(0),
+          Integer.parseInt(RegistryTypeUtils.getAddressField(shuffle.addresses.get(0),
               AddressTypes.ADDRESS_PORT_FIELD));
+      this.serviceAddress =
+          RegistryTypeUtils.getAddressField(services.addresses.get(0), AddressTypes.ADDRESS_URI);
     }
 
     @Override
@@ -353,6 +361,11 @@ public class LlapZookeeperRegistryImpl implements ServiceRegistry {
     }
 
     @Override
+    public String getServicesAddress() {
+      return serviceAddress;
+    }
+
+    @Override
     public boolean isAlive() {
       return alive;
     }
@@ -370,15 +383,16 @@ public class LlapZookeeperRegistryImpl implements ServiceRegistry {
 
     @Override
     public Resource getResource() {
-      int memory = Integer.valueOf(srv.get(ConfVars.LLAP_DAEMON_MEMORY_PER_INSTANCE_MB.varname));
-      int vCores = Integer.valueOf(srv.get(ConfVars.LLAP_DAEMON_NUM_EXECUTORS.varname));
+      int memory = Integer.parseInt(srv.get(ConfVars.LLAP_DAEMON_MEMORY_PER_INSTANCE_MB.varname));
+      int vCores = Integer.parseInt(srv.get(ConfVars.LLAP_DAEMON_NUM_EXECUTORS.varname));
       return Resource.newInstance(memory, vCores);
     }
 
     @Override
     public String toString() {
       return "DynamicServiceInstance [alive=" + alive + ", host=" + host + ":" + rpcPort +
-          " with resources=" + getResource() + "]";
+          " with resources=" + getResource() + ", shufflePort=" + getShufflePort() +
+          ", servicesAddress=" + getServicesAddress() +  ", mgmtPort=" + getManagementPort() + "]";
     }
 
     @Override
