@@ -27,10 +27,12 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.*;
+import org.apache.hadoop.hive.ql.CompilationOpContext;
+import org.apache.hadoop.hive.ql.DriverContext;
+import org.apache.hadoop.hive.ql.QueryDisplay;
+import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
@@ -40,6 +42,8 @@ import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Task implementation.
@@ -51,6 +55,7 @@ public abstract class Task<T extends Serializable> implements Serializable, Node
   public transient HashMap<String, Long> taskCounters;
   public transient TaskHandle taskHandle;
   protected transient HiveConf conf;
+  protected transient QueryState queryState;
   protected transient LogHelper console;
   protected transient QueryPlan queryPlan;
   protected transient DriverContext driverContext;
@@ -82,7 +87,26 @@ public abstract class Task<T extends Serializable> implements Serializable, Node
   protected String id;
   protected T work;
   private TaskState taskState = TaskState.CREATED;
+  private String statusMessage;
+  private String diagnosticMesg;
   private transient boolean fetchSource;
+
+  public void setDiagnosticMessage(String diagnosticMesg) {
+    this.diagnosticMesg = diagnosticMesg;
+  }
+
+  public String getDiagnosticsMessage() {
+    return diagnosticMesg;
+  }
+
+  public void setStatusMessage(String statusMessage) {
+    this.statusMessage = statusMessage;
+    updateStatusInQueryDisplay();
+  }
+
+  public String getStatusMessage() {
+    return statusMessage;
+  }
 
   public enum FeedType {
     DYNAMIC_PARTITIONS, // list of dynamic partitions
@@ -124,11 +148,12 @@ public abstract class Task<T extends Serializable> implements Serializable, Node
     return taskHandle;
   }
 
-  public void initialize(HiveConf conf, QueryPlan queryPlan, DriverContext driverContext,
+  public void initialize(QueryState queryState, QueryPlan queryPlan, DriverContext driverContext,
       CompilationOpContext opContext) {
     this.queryPlan = queryPlan;
     setInitialized();
-    this.conf = conf;
+    this.queryState = queryState;
+    this.conf = queryState.getConf();
     this.driverContext = driverContext;
     console = new LogHelper(LOG);
   }
@@ -136,13 +161,13 @@ public abstract class Task<T extends Serializable> implements Serializable, Node
     this.queryDisplay = queryDisplay;
   }
 
-  private void updateStatusInQueryDisplay() {
+  protected void updateStatusInQueryDisplay() {
     if (queryDisplay != null) {
       queryDisplay.updateTaskStatus(this);
     }
   }
 
-  private void setState(TaskState state) {
+  protected void setState(TaskState state) {
     this.taskState = state;
     updateStatusInQueryDisplay();
   }
@@ -309,7 +334,7 @@ public abstract class Task<T extends Serializable> implements Serializable, Node
     return ret;
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked", "rawtypes"})
   public static List<Task<? extends Serializable>>
       findLeafs(List<Task<? extends Serializable>> rootTasks) {
     final List<Task<? extends Serializable>> leafTasks = new ArrayList<Task<?>>();

@@ -67,6 +67,11 @@ public class TestHplsqlLocal {
   public void testCast() throws Exception {
     run("cast");
   }
+  
+  @Test
+  public void testCast2() throws Exception {
+    run("cast2");
+  }
 
   @Test
   public void testChar() throws Exception {
@@ -111,6 +116,11 @@ public class TestHplsqlLocal {
   @Test
   public void testCreatePackage2() throws Exception {
     run("create_package2");
+  }
+  
+  @Test
+  public void testCreatePackage3() throws Exception {
+    run("create_package3");
   }
 
   @Test
@@ -221,6 +231,11 @@ public class TestHplsqlLocal {
   @Test
   public void testIf2() throws Exception {
     run("if2");
+  }
+  
+  @Test
+  public void testIf3Bteq() throws Exception {
+    run("if3_bteq");
   }
 
   @Test

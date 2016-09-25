@@ -14,23 +14,6 @@ POSTHOOK: query: explain extended
 insert overwrite table stats_non_partitioned
 select * from src
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            src
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               stats_non_partitioned
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -59,15 +42,20 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                       bucket_count -1
                       columns key,value
                       columns.comments 
                       columns.types string:string
 #### A masked pattern was here ####
                       name default.stats_non_partitioned
+                      numFiles 0
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct stats_non_partitioned { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                      totalSize 0
 #### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                     name: default.stats_non_partitioned
@@ -83,7 +71,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -103,7 +91,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -133,15 +121,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types string:string
 #### A masked pattern was here ####
                 name default.stats_non_partitioned
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct stats_non_partitioned { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.stats_non_partitioned
@@ -1329,23 +1322,6 @@ POSTHOOK: query: explain extended
 insert overwrite table stats_non_partitioned
 select * from src
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            src
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               stats_non_partitioned
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-7 depends on stages: Stage-1 , consists of Stage-4, Stage-3, Stage-5
@@ -1379,15 +1355,20 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                       bucket_count -1
                       columns key,value
                       columns.comments 
                       columns.types string:string
 #### A masked pattern was here ####
                       name default.stats_non_partitioned
+                      numFiles 0
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct stats_non_partitioned { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                      totalSize 0
 #### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                     name: default.stats_non_partitioned
@@ -1403,7 +1384,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1423,7 +1404,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -1462,15 +1443,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types string:string
 #### A masked pattern was here ####
                 name default.stats_non_partitioned
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct stats_non_partitioned { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.stats_non_partitioned
@@ -1493,15 +1479,20 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                     bucket_count -1
                     columns key,value
                     columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.stats_non_partitioned
+                    numFiles 0
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct stats_non_partitioned { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    totalSize 0
 #### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                   name: default.stats_non_partitioned
@@ -1517,30 +1508,40 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
               bucket_count -1
               columns key,value
               columns.comments 
               columns.types string:string
 #### A masked pattern was here ####
               name default.stats_non_partitioned
+              numFiles 0
+              numRows 0
+              rawDataSize 0
               serialization.ddl struct stats_non_partitioned { string key, string value}
               serialization.format 1
               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+              totalSize 0
 #### A masked pattern was here ####
             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
           
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types string:string
 #### A masked pattern was here ####
                 name default.stats_non_partitioned
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct stats_non_partitioned { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.stats_non_partitioned
@@ -1562,15 +1563,20 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                     bucket_count -1
                     columns key,value
                     columns.comments 
                     columns.types string:string
 #### A masked pattern was here ####
                     name default.stats_non_partitioned
+                    numFiles 0
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct stats_non_partitioned { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    totalSize 0
 #### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                   name: default.stats_non_partitioned
@@ -1586,30 +1592,40 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
               bucket_count -1
               columns key,value
               columns.comments 
               columns.types string:string
 #### A masked pattern was here ####
               name default.stats_non_partitioned
+              numFiles 0
+              numRows 0
+              rawDataSize 0
               serialization.ddl struct stats_non_partitioned { string key, string value}
               serialization.format 1
               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+              totalSize 0
 #### A masked pattern was here ####
             serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
           
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types string:string
 #### A masked pattern was here ####
                 name default.stats_non_partitioned
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct stats_non_partitioned { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.stats_non_partitioned

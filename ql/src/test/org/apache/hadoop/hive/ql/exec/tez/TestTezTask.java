@@ -138,11 +138,10 @@ public class TestTezTask {
     mws[0].setAliasToWork(map);
     mws[1].setAliasToWork(map);
 
-    LinkedHashMap<String, ArrayList<String>> pathMap
-      = new LinkedHashMap<String, ArrayList<String>>();
+    LinkedHashMap<Path, ArrayList<String>> pathMap = new LinkedHashMap<>();
     ArrayList<String> aliasList = new ArrayList<String>();
     aliasList.add("foo");
-    pathMap.put("foo", aliasList);
+    pathMap.put(new Path("foo"), aliasList);
 
     mws[0].setPathToAliases(pathMap);
     mws[1].setPathToAliases(pathMap);
@@ -162,7 +161,11 @@ public class TestTezTask {
     conf = new JobConf();
     appLr = mock(LocalResource.class);
 
-    SessionState.start(new HiveConf());
+    HiveConf hiveConf = new HiveConf();
+    hiveConf
+        .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
+            "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
+    SessionState.start(hiveConf);
     session = mock(TezClient.class);
     sessionState = mock(TezSessionState.class);
     when(sessionState.getSession()).thenReturn(session);
@@ -274,5 +277,53 @@ public class TestTezTask {
     when(utils.getBaseName(res)).thenReturn("foo.jar");
 
     assertEquals(resMap, task.getExtraLocalResources(conf, path, inputOutputJars));
+  }
+
+  @Test
+  public void testParseRightmostXmx() throws Exception {
+    // Empty java opts
+    String javaOpts = "";
+    long heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", -1, heapSize);
+
+    // Non-empty java opts without -Xmx specified
+    javaOpts = "-Xms1024m";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", -1, heapSize);
+
+    // Non-empty java opts with -Xmx specified in GB
+    javaOpts = "-Xms1024m -Xmx2g";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", 2147483648L, heapSize);
+
+    // Non-empty java opts with -Xmx specified in MB
+    javaOpts = "-Xms1024m -Xmx1024m";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", 1073741824, heapSize);
+
+    // Non-empty java opts with -Xmx specified in KB
+    javaOpts = "-Xms1024m -Xmx524288k";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", 536870912, heapSize);
+
+    // Non-empty java opts with -Xmx specified in B
+    javaOpts = "-Xms1024m -Xmx1610612736";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", 1610612736, heapSize);
+
+    // Non-empty java opts with -Xmx specified twice
+    javaOpts = "-Xmx1024m -Xmx1536m";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", 1610612736, heapSize);
+
+    // Non-empty java opts with bad -Xmx specification
+    javaOpts = "pre-Xmx1024m";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", -1, heapSize);
+
+    // Non-empty java opts with bad -Xmx specification
+    javaOpts = "-Xmx1024m-post";
+    heapSize = DagUtils.parseRightmostXmx(javaOpts);
+    assertEquals("Unexpected maximum heap size", -1, heapSize);
   }
 }

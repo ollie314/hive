@@ -46,30 +46,37 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions: 2000.0 (type: double), employeeid (type: int)
-              outputColumnNames: employeesalary, employeeid
+              expressions: employeeid (type: int)
+              outputColumnNames: employeeid
+              Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16)
-                keys: employeesalary (type: double)
+                keys: 2000.0 (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions: _col0 (type: double)
+                  key expressions: 2000.0 (type: double)
                   sort order: +
-                  Map-reduce partition columns: _col0 (type: double)
+                  Map-reduce partition columns: 2000.0 (type: double)
+                  Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0)
-          keys: KEY._col0 (type: double)
+          keys: 2000.0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
+            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), 2000.0 (type: double)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
+              Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -88,21 +95,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: explain extended
 analyze table Employee_Part partition (employeeSalary=2000.0) compute statistics for columns employeeID
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_ANALYZE
-   TOK_TAB
-      TOK_TABNAME
-         Employee_Part
-      TOK_PARTSPEC
-         TOK_PARTVAL
-            employeeSalary
-            2000.0
-   columns
-   TOK_TABCOLNAME
-      employeeID
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
   Stage-1 depends on stages: Stage-0
@@ -113,20 +105,24 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Select Operator
-              expressions: 2000.0 (type: double), employeeid (type: int)
-              outputColumnNames: employeesalary, employeeid
+              expressions: employeeid (type: int)
+              outputColumnNames: employeeid
+              Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16)
-                keys: employeesalary (type: double)
+                keys: 2000.0 (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions: _col0 (type: double)
+                  key expressions: 2000.0 (type: double)
                   null sort order: a
                   sort order: +
-                  Map-reduce partition columns: _col0 (type: double)
+                  Map-reduce partition columns: 2000.0 (type: double)
+                  Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                   tag: -1
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
                   auto parallelism: false
@@ -149,8 +145,10 @@ STAGE PLANS:
 #### A masked pattern was here ####
               name default.employee_part
               numFiles 1
+              numRows 0
               partition_columns employeesalary
               partition_columns.types double
+              rawDataSize 0
               serialization.ddl struct employee_part { i32 employeeid, string employeename}
               serialization.format |
               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -183,17 +181,20 @@ STAGE PLANS:
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0)
-          keys: KEY._col0 (type: double)
+          keys: 2000.0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
+            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), 2000.0 (type: double)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
               GlobalTableId: 0
 #### A masked pattern was here ####
               NumFilesPerFileSink: 1
+              Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
 #### A masked pattern was here ####
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
@@ -245,30 +246,37 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions: 4000.0 (type: double), employeeid (type: int)
-              outputColumnNames: employeesalary, employeeid
+              expressions: employeeid (type: int)
+              outputColumnNames: employeeid
+              Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16)
-                keys: employeesalary (type: double)
+                keys: 4000.0 (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions: _col0 (type: double)
+                  key expressions: 4000.0 (type: double)
                   sort order: +
-                  Map-reduce partition columns: _col0 (type: double)
+                  Map-reduce partition columns: 4000.0 (type: double)
+                  Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0)
-          keys: KEY._col0 (type: double)
+          keys: 4000.0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
+            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), 4000.0 (type: double)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
+              Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -287,21 +295,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: explain extended
 analyze table Employee_Part partition (employeeSalary=4000.0) compute statistics for columns employeeID
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_ANALYZE
-   TOK_TAB
-      TOK_TABNAME
-         Employee_Part
-      TOK_PARTSPEC
-         TOK_PARTVAL
-            employeeSalary
-            4000.0
-   columns
-   TOK_TABCOLNAME
-      employeeID
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
   Stage-1 depends on stages: Stage-0
@@ -312,20 +305,24 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Select Operator
-              expressions: 4000.0 (type: double), employeeid (type: int)
-              outputColumnNames: employeesalary, employeeid
+              expressions: employeeid (type: int)
+              outputColumnNames: employeeid
+              Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16)
-                keys: employeesalary (type: double)
+                keys: 4000.0 (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions: _col0 (type: double)
+                  key expressions: 4000.0 (type: double)
                   null sort order: a
                   sort order: +
-                  Map-reduce partition columns: _col0 (type: double)
+                  Map-reduce partition columns: 4000.0 (type: double)
+                  Statistics: Num rows: 26 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                   tag: -1
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
                   auto parallelism: false
@@ -348,8 +345,10 @@ STAGE PLANS:
 #### A masked pattern was here ####
               name default.employee_part
               numFiles 1
+              numRows 0
               partition_columns employeesalary
               partition_columns.types double
+              rawDataSize 0
               serialization.ddl struct employee_part { i32 employeeid, string employeename}
               serialization.format |
               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -382,17 +381,20 @@ STAGE PLANS:
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0)
-          keys: KEY._col0 (type: double)
+          keys: 4000.0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
+            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), 4000.0 (type: double)
             outputColumnNames: _col0, _col1
+            Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
               GlobalTableId: 0
 #### A masked pattern was here ####
               NumFilesPerFileSink: 1
+              Statistics: Num rows: 13 Data size: 52 Basic stats: COMPLETE Column stats: NONE
 #### A masked pattern was here ####
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
@@ -444,30 +446,37 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions: 2000.0 (type: double), employeeid (type: int), employeename (type: string)
-              outputColumnNames: employeesalary, employeeid, employeename
+              expressions: employeeid (type: int), employeename (type: string)
+              outputColumnNames: employeeid, employeename
+              Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16), compute_stats(employeename, 16)
-                keys: employeesalary (type: double)
+                keys: 2000.0 (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
+                Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
-                  key expressions: _col0 (type: double)
+                  key expressions: 2000.0 (type: double)
                   sort order: +
-                  Map-reduce partition columns: _col0 (type: double)
+                  Map-reduce partition columns: 2000.0 (type: double)
+                  Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>), _col2 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0), compute_stats(VALUE._col1)
-          keys: KEY._col0 (type: double)
+          keys: 2000.0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
+          Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
           Select Operator
-            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col2 (type: struct<columntype:string,maxlength:bigint,avglength:double,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
+            expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col2 (type: struct<columntype:string,maxlength:bigint,avglength:double,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), 2000.0 (type: double)
             outputColumnNames: _col0, _col1, _col2
+            Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
+              Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -524,18 +533,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: employeesalary (type: double), employeeid (type: int), employeename (type: string)
               outputColumnNames: employeesalary, employeeid, employeename
+              Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16), compute_stats(employeename, 16)
                 keys: employeesalary (type: double)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
+                Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: double)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: double)
+                  Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>), _col2 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
       Reduce Operator Tree:
         Group By Operator
@@ -543,11 +556,14 @@ STAGE PLANS:
           keys: KEY._col0 (type: double)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
+          Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
           Select Operator
             expressions: _col1 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col2 (type: struct<columntype:string,maxlength:bigint,avglength:double,countnulls:bigint,numdistinctvalues:bigint,ndvbitvector:string>), _col0 (type: double)
             outputColumnNames: _col0, _col1, _col2
+            Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
+              Statistics: Num rows: 1 Data size: 105 Basic stats: COMPLETE Column stats: NONE
               table:
                   input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -606,23 +622,29 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: employee_part
+            Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: employeeid (type: int), employeename (type: string)
               outputColumnNames: employeeid, employeename
+              Statistics: Num rows: 2 Data size: 210 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: compute_stats(employeeid, 16), compute_stats(employeename, 16)
                 mode: hash
                 outputColumnNames: _col0, _col1
+                Statistics: Num rows: 1 Data size: 968 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   sort order: 
+                  Statistics: Num rows: 1 Data size: 968 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>), _col1 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:string,numbitvectors:int>)
       Reduce Operator Tree:
         Group By Operator
           aggregations: compute_stats(VALUE._col0), compute_stats(VALUE._col1)
           mode: mergepartial
           outputColumnNames: _col0, _col1
+          Statistics: Num rows: 1 Data size: 972 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
+            Statistics: Num rows: 1 Data size: 972 Basic stats: COMPLETE Column stats: NONE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat

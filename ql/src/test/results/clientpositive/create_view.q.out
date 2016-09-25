@@ -190,6 +190,8 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
+            properties:
+              insideView TRUE
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: (UDFToDouble(key) = 18.0) (type: boolean)
@@ -257,8 +259,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -306,8 +308,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -353,8 +355,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -402,8 +404,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -559,7 +561,7 @@ POSTHOOK: Input: default@table1
 POSTHOOK: Input: default@view4
 POSTHOOK: Output: database:default
 POSTHOOK: Output: default@view5
-Warning: Shuffle Join JOIN[7][tables = [$hdt$_0, $hdt$_1]] in Stage 'Stage-1:MAPRED' is a cross product
+Warning: Shuffle Join JOIN[6][tables = [$hdt$_0, $hdt$_1]] in Stage 'Stage-1:MAPRED' is a cross product
 PREHOOK: query: SELECT * FROM view5
 PREHOOK: type: QUERY
 PREHOOK: Input: default@table1
@@ -764,8 +766,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -844,8 +846,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -922,8 +924,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -990,8 +992,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1066,8 +1068,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1138,8 +1140,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1223,8 +1225,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1344,8 +1346,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1460,8 +1462,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 
@@ -1545,8 +1547,8 @@ Table Parameters:
 	 	 
 # Storage Information	 	 
 SerDe Library:      	null                	 
-InputFormat:        	org.apache.hadoop.mapred.SequenceFileInputFormat	 
-OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat	 
+InputFormat:        	org.apache.hadoop.mapred.TextInputFormat	 
+OutputFormat:       	org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat	 
 Compressed:         	No                  	 
 Num Buckets:        	-1                  	 
 Bucket Columns:     	[]                  	 

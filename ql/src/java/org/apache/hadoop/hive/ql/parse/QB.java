@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.CreateTableDesc;
+import org.apache.hadoop.hive.ql.plan.CreateViewDesc;
 
 /**
  * Implementation of the query block.
@@ -62,6 +63,9 @@ public class QB {
   private List<Path> encryptedTargetTablePaths;
   private boolean insideView;
   private Set<String> aliasInsideView;
+
+  // If this is a materialized view, this stores the view descriptor
+  private CreateViewDesc viewDesc;
 
   // used by PTFs
   /*
@@ -263,6 +267,11 @@ public class QB {
     this.isQuery = isQuery;
   }
 
+  /**
+   * Set to true in SemanticAnalyzer.getMetadataForDestFile,
+   * if destination is a file and query is not CTAS
+   * @return
+   */
   public boolean getIsQuery() {
     return isQuery;
   }
@@ -399,6 +408,18 @@ public class QB {
     return havingClauseSubQueryPredicate;
   }
 
+  public CreateViewDesc getViewDesc() {
+    return viewDesc;
+  }
+
+  public void setViewDesc(CreateViewDesc viewDesc) {
+    this.viewDesc = viewDesc;
+  }
+
+  public boolean isMaterializedView() {
+    return viewDesc != null && viewDesc.isMaterialized();
+  }
+
   void addEncryptedTargetTablePath(Path p) {
     if(encryptedTargetTablePaths == null) {
       encryptedTargetTablePaths = new ArrayList<>();
@@ -432,4 +453,17 @@ public class QB {
     return aliasInsideView;
   }
 
+  /**
+   * returns true, if the query block contains any query, or subquery without a source table
+   * Like select current_user(), select current_database()
+   * @return true, if the query block contains any query without a source table
+   */
+  public boolean containsQueryWithoutSourceTable() {
+    for (QBExpr qbexpr : aliasToSubq.values()) {
+      if (qbexpr.containsQueryWithoutSourceTable()) {
+        return true;
+      }
+    }
+    return aliasToTabs.size()==0 && aliasToSubq.size()==0;
+  }
 }

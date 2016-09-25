@@ -26,9 +26,11 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.ErrorMsg;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.hooks.Entity;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
@@ -52,8 +54,8 @@ public class UpdateDeleteSemanticAnalyzer extends SemanticAnalyzer {
 
   boolean useSuper = false;
 
-  public UpdateDeleteSemanticAnalyzer(HiveConf conf) throws SemanticException {
-    super(conf);
+  public UpdateDeleteSemanticAnalyzer(QueryState queryState) throws SemanticException {
+    super(queryState);
   }
 
   @Override
@@ -138,6 +140,12 @@ public class UpdateDeleteSemanticAnalyzer extends SemanticAnalyzer {
       LOG.error("Failed to find table " + getDotName(tableName) + " got exception "
           + e.getMessage());
       throw new SemanticException(e.getMessage(), e);
+    }
+
+    if (mTable.getTableType() == TableType.VIRTUAL_VIEW ||
+        mTable.getTableType() == TableType.MATERIALIZED_VIEW) {
+      LOG.error("Table " + getDotName(tableName) + " is a view or materialized view");
+      throw new SemanticException(ErrorMsg.UPDATE_DELETE_VIEW.getMsg());
     }
 
     List<FieldSchema> partCols = mTable.getPartCols();
@@ -259,6 +267,7 @@ public class UpdateDeleteSemanticAnalyzer extends SemanticAnalyzer {
       // references.
       HiveConf.setVar(conf, HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
       rewrittenCtx = new Context(conf);
+      rewrittenCtx.setExplainConfig(ctx.getExplainConfig());
     } catch (IOException e) {
       throw new SemanticException(ErrorMsg.UPDATEDELETE_IO_ERROR.getMsg());
     }
@@ -328,7 +337,9 @@ public class UpdateDeleteSemanticAnalyzer extends SemanticAnalyzer {
     // Walk through all our inputs and set them to note that this read is part of an update or a
     // delete.
     for (ReadEntity input : inputs) {
-      input.setUpdateOrDelete(true);
+      if(isWritten(input)) {
+        input.setUpdateOrDelete(true);
+      }
     }
 
     if (inputIsPartitioned(inputs)) {
@@ -376,6 +387,18 @@ public class UpdateDeleteSemanticAnalyzer extends SemanticAnalyzer {
     }
   }
 
+  /**
+   * Check that {@code readEntity} is also being written
+   */
+  private boolean isWritten(Entity readEntity) {
+    for(Entity writeEntity : outputs) {
+      //make sure to compare them as Entity, i.e. that it's the same table or partition, etc
+      if(writeEntity.toString().equalsIgnoreCase(readEntity.toString())) {
+        return true;
+      }
+    }
+    return false;
+  }
   private String operation() {
     if (updating()) return "update";
     else if (deleting()) return "delete";

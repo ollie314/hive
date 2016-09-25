@@ -38,6 +38,7 @@ import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.HadoopJobExecHelper;
@@ -84,9 +85,9 @@ public class PartialScanTask extends Task<PartialScanWork> implements
   protected HadoopJobExecHelper jobExecHelper;
 
   @Override
-  public void initialize(HiveConf conf, QueryPlan queryPlan,
+  public void initialize(QueryState queryState, QueryPlan queryPlan,
       DriverContext driverContext, CompilationOpContext opContext) {
-    super.initialize(conf, queryPlan, driverContext, opContext);
+    super.initialize(queryState, queryPlan, driverContext, opContext);
     job = new JobConf(conf, PartialScanTask.class);
     jobExecHelper = new HadoopJobExecHelper(job, this.console, this, this);
   }
@@ -222,11 +223,12 @@ public class PartialScanTask extends Task<PartialScanWork> implements
       // Finally SUBMIT the JOB!
       rj = jc.submitJob(job);
 
-      returnVal = jobExecHelper.progress(rj, jc);
+      returnVal = jobExecHelper.progress(rj, jc, ctx);
       success = (returnVal == 0);
 
     } catch (Exception e) {
       e.printStackTrace();
+      setException(e);
       String mesg = " with exception '" + Utilities.getNameMessage(e) + "'";
       if (rj != null) {
         mesg = "Ended Job = " + rj.getJobID() + mesg;
@@ -331,7 +333,6 @@ public class PartialScanTask extends Task<PartialScanWork> implements
     if (jobConfFileName != null) {
       conf.addResource(new Path(jobConfFileName));
     }
-    HiveConf hiveConf = new HiveConf(conf, PartialScanTask.class);
 
     org.slf4j.Logger LOG = LoggerFactory.getLogger(PartialScanTask.class.getName());
     boolean isSilent = HiveConf.getBoolVar(conf,
@@ -348,11 +349,11 @@ public class PartialScanTask extends Task<PartialScanWork> implements
       }
     }
 
-
+    QueryState queryState = new QueryState(new HiveConf(conf, PartialScanTask.class));
     PartialScanWork mergeWork = new PartialScanWork(inputPaths);
     DriverContext driverCxt = new DriverContext();
     PartialScanTask taskExec = new PartialScanTask();
-    taskExec.initialize(hiveConf, null, driverCxt, new CompilationOpContext());
+    taskExec.initialize(queryState, null, driverCxt, new CompilationOpContext());
     taskExec.setWork(mergeWork);
     int ret = taskExec.execute(driverCxt);
 

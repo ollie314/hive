@@ -185,7 +185,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -219,7 +219,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s3
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -448,7 +448,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -482,7 +482,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s3
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -869,7 +869,7 @@ STAGE PLANS:
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                     Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
@@ -1520,7 +1520,7 @@ STAGE PLANS:
                   Map-reduce partition columns: _col0 (type: string)
                   Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
           TableScan
-            alias: s2
+            alias: s3
             Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
@@ -5543,7 +5543,7 @@ STAGE PLANS:
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                     Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
@@ -5712,7 +5712,7 @@ STAGE PLANS:
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                   Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: (UDFToDouble(key) < 10.0) (type: boolean)
@@ -5784,7 +5784,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s3
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -5831,7 +5831,7 @@ STAGE PLANS:
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                   Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
           TableScan
-            alias: s1
+            alias: s4
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: (UDFToDouble(key) < 10.0) (type: boolean)
@@ -6815,157 +6815,6 @@ where a.k1 > 20
 )
 subq
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_SUBQUERY
-         TOK_QUERY
-            TOK_FROM
-               TOK_SUBQUERY
-                  TOK_UNIONALL
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_TABREF
-                              TOK_TABNAME
-                                 dst_union22_delta
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECT
-                              TOK_SELEXPR
-                                 TOK_TABLE_OR_COL
-                                    k1
-                                 k1
-                              TOK_SELEXPR
-                                 TOK_TABLE_OR_COL
-                                    k2
-                                 k2
-                              TOK_SELEXPR
-                                 TOK_TABLE_OR_COL
-                                    k3
-                                 k3
-                              TOK_SELEXPR
-                                 TOK_TABLE_OR_COL
-                                    k4
-                                 k4
-                           TOK_WHERE
-                              and
-                                 =
-                                    TOK_TABLE_OR_COL
-                                       ds
-                                    '1'
-                                 <=
-                                    TOK_TABLE_OR_COL
-                                       k0
-                                    50
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_LEFTOUTERJOIN
-                              TOK_TABREF
-                                 TOK_TABNAME
-                                    dst_union22
-                                 a
-                              TOK_SUBQUERY
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             dst_union22_delta
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_ALLCOLREF
-                                       TOK_WHERE
-                                          and
-                                             =
-                                                TOK_TABLE_OR_COL
-                                                   ds
-                                                '1'
-                                             >
-                                                TOK_TABLE_OR_COL
-                                                   k0
-                                                50
-                                 b
-                              and
-                                 =
-                                    .
-                                       TOK_TABLE_OR_COL
-                                          a
-                                       k1
-                                    .
-                                       TOK_TABLE_OR_COL
-                                          b
-                                       k1
-                                 =
-                                    .
-                                       TOK_TABLE_OR_COL
-                                          a
-                                       ds
-                                    '1'
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECT
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    k1
-                                 k1
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    k2
-                                 k2
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       b
-                                    k3
-                                 k3
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       b
-                                    k4
-                                 k4
-                           TOK_WHERE
-                              >
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    k1
-                                 20
-                  _u1
-            TOK_INSERT
-               TOK_DESTINATION
-                  TOK_DIR
-                     TOK_TMP_FILE
-               TOK_SELECTDI
-                  TOK_SELEXPR
-                     TOK_ALLCOLREF
-         subq
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dst_union22
-            TOK_PARTSPEC
-               TOK_PARTVAL
-                  ds
-                  '2'
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-7 is a root stage , consists of Stage-8, Stage-4
   Stage-8 has a backup stage: Stage-4
@@ -7946,7 +7795,6 @@ from (
   from src
   UNION DISTINCT 
   select key as key2, value as value2 from src) s
-order by s.key2, s.value2
 PREHOOK: type: QUERY
 POSTHOOK: query: -- union23.q
 
@@ -7957,12 +7805,10 @@ from (
   from src
   UNION DISTINCT 
   select key as key2, value as value2 from src) s
-order by s.key2, s.value2
 POSTHOOK: type: QUERY
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
-  Stage-2 depends on stages: Stage-1
-  Stage-0 depends on stages: Stage-2
+  Stage-0 depends on stages: Stage-1
 
 STAGE PLANS:
   Stage: Stage-1
@@ -8021,26 +7867,6 @@ STAGE PLANS:
           Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
-            table:
-                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
-
-  Stage: Stage-2
-    Map Reduce
-      Map Operator Tree:
-          TableScan
-            Reduce Output Operator
-              key expressions: _col0 (type: string), _col1 (type: string)
-              sort order: ++
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
-      Reduce Operator Tree:
-        Select Operator
-          expressions: KEY.reducesinkkey0 (type: string), KEY.reducesinkkey1 (type: string)
-          outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
-          File Output Operator
-            compressed: false
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
@@ -8059,7 +7885,6 @@ from (
   from src
   UNION DISTINCT 
   select key as key2, value as value2 from src) s
-order by s.key2, s.value2
 PREHOOK: type: QUERY
 PREHOOK: Input: default@src
 #### A masked pattern was here ####
@@ -8069,7 +7894,6 @@ from (
   from src
   UNION DISTINCT 
   select key as key2, value as value2 from src) s
-order by s.key2, s.value2
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src
 #### A masked pattern was here ####
@@ -8460,154 +8284,6 @@ select s.key, s.count from (
   select key, count(1) as count from src5 where key < 10 group by key
 )s
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_SUBQUERY
-         TOK_QUERY
-            TOK_FROM
-               TOK_SUBQUERY
-                  TOK_UNIONALL
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_SUBQUERY
-                              TOK_UNIONALL
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_SUBQUERY
-                                          TOK_UNIONALL
-                                             TOK_QUERY
-                                                TOK_FROM
-                                                   TOK_TABREF
-                                                      TOK_TABNAME
-                                                         src2
-                                                TOK_INSERT
-                                                   TOK_DESTINATION
-                                                      TOK_DIR
-                                                         TOK_TMP_FILE
-                                                   TOK_SELECT
-                                                      TOK_SELEXPR
-                                                         TOK_TABLE_OR_COL
-                                                            key
-                                                      TOK_SELEXPR
-                                                         TOK_TABLE_OR_COL
-                                                            count
-                                                   TOK_WHERE
-                                                      <
-                                                         TOK_TABLE_OR_COL
-                                                            key
-                                                         10
-                                             TOK_QUERY
-                                                TOK_FROM
-                                                   TOK_TABREF
-                                                      TOK_TABNAME
-                                                         src3
-                                                TOK_INSERT
-                                                   TOK_DESTINATION
-                                                      TOK_DIR
-                                                         TOK_TMP_FILE
-                                                   TOK_SELECT
-                                                      TOK_SELEXPR
-                                                         TOK_TABLE_OR_COL
-                                                            key
-                                                      TOK_SELEXPR
-                                                         TOK_TABLE_OR_COL
-                                                            count
-                                                   TOK_WHERE
-                                                      <
-                                                         TOK_TABLE_OR_COL
-                                                            key
-                                                         10
-                                          _u1
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECTDI
-                                          TOK_SELEXPR
-                                             TOK_ALLCOLREF
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             src4
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                key
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                count
-                                       TOK_WHERE
-                                          <
-                                             TOK_TABLE_OR_COL
-                                                key
-                                             10
-                              _u2
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECTDI
-                              TOK_SELEXPR
-                                 TOK_ALLCOLREF
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_TABREF
-                              TOK_TABNAME
-                                 src5
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECT
-                              TOK_SELEXPR
-                                 TOK_TABLE_OR_COL
-                                    key
-                              TOK_SELEXPR
-                                 TOK_FUNCTION
-                                    count
-                                    1
-                                 count
-                           TOK_WHERE
-                              <
-                                 TOK_TABLE_OR_COL
-                                    key
-                                 10
-                           TOK_GROUPBY
-                              TOK_TABLE_OR_COL
-                                 key
-                  _u3
-            TOK_INSERT
-               TOK_DESTINATION
-                  TOK_DIR
-                     TOK_TMP_FILE
-               TOK_SELECTDI
-                  TOK_SELEXPR
-                     TOK_ALLCOLREF
-         s
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1
@@ -9213,139 +8889,6 @@ select s.key, s.count from (
   select a.key as key, b.count as count from src4 a join src5 b on a.key=b.key where a.key < 10
 )s
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_SUBQUERY
-         TOK_QUERY
-            TOK_FROM
-               TOK_SUBQUERY
-                  TOK_UNIONALL
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_SUBQUERY
-                              TOK_UNIONALL
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             src2
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                key
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                count
-                                       TOK_WHERE
-                                          <
-                                             TOK_TABLE_OR_COL
-                                                key
-                                             10
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             src3
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                key
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                count
-                                       TOK_WHERE
-                                          <
-                                             TOK_TABLE_OR_COL
-                                                key
-                                             10
-                              _u1
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECTDI
-                              TOK_SELEXPR
-                                 TOK_ALLCOLREF
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_JOIN
-                              TOK_TABREF
-                                 TOK_TABNAME
-                                    src4
-                                 a
-                              TOK_TABREF
-                                 TOK_TABNAME
-                                    src5
-                                 b
-                              =
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       b
-                                    key
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECT
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 key
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       b
-                                    count
-                                 count
-                           TOK_WHERE
-                              <
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 10
-                  _u2
-            TOK_INSERT
-               TOK_DESTINATION
-                  TOK_DIR
-                     TOK_TMP_FILE
-               TOK_SELECTDI
-                  TOK_SELEXPR
-                     TOK_ALLCOLREF
-         s
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-7 depends on stages: Stage-1
@@ -9817,143 +9360,6 @@ select s.key, s.count from (
   select a.key as key, count(1) as count from src4 a join src5 b on a.key=b.key where a.key < 10 group by a.key
 )s
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_SUBQUERY
-         TOK_QUERY
-            TOK_FROM
-               TOK_SUBQUERY
-                  TOK_UNIONALL
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_SUBQUERY
-                              TOK_UNIONALL
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             src2
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                key
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                count
-                                       TOK_WHERE
-                                          <
-                                             TOK_TABLE_OR_COL
-                                                key
-                                             10
-                                 TOK_QUERY
-                                    TOK_FROM
-                                       TOK_TABREF
-                                          TOK_TABNAME
-                                             src3
-                                    TOK_INSERT
-                                       TOK_DESTINATION
-                                          TOK_DIR
-                                             TOK_TMP_FILE
-                                       TOK_SELECT
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                key
-                                          TOK_SELEXPR
-                                             TOK_TABLE_OR_COL
-                                                count
-                                       TOK_WHERE
-                                          <
-                                             TOK_TABLE_OR_COL
-                                                key
-                                             10
-                              _u1
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECTDI
-                              TOK_SELEXPR
-                                 TOK_ALLCOLREF
-                     TOK_QUERY
-                        TOK_FROM
-                           TOK_JOIN
-                              TOK_TABREF
-                                 TOK_TABNAME
-                                    src4
-                                 a
-                              TOK_TABREF
-                                 TOK_TABNAME
-                                    src5
-                                 b
-                              =
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       b
-                                    key
-                        TOK_INSERT
-                           TOK_DESTINATION
-                              TOK_DIR
-                                 TOK_TMP_FILE
-                           TOK_SELECT
-                              TOK_SELEXPR
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 key
-                              TOK_SELEXPR
-                                 TOK_FUNCTION
-                                    count
-                                    1
-                                 count
-                           TOK_WHERE
-                              <
-                                 .
-                                    TOK_TABLE_OR_COL
-                                       a
-                                    key
-                                 10
-                           TOK_GROUPBY
-                              .
-                                 TOK_TABLE_OR_COL
-                                    a
-                                 key
-                  _u2
-            TOK_INSERT
-               TOK_DESTINATION
-                  TOK_DIR
-                     TOK_TMP_FILE
-               TOK_SELECTDI
-                  TOK_SELEXPR
-                     TOK_ALLCOLREF
-         s
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  s
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1, Stage-5
@@ -10569,7 +9975,7 @@ STAGE PLANS:
                     Map-reduce partition columns: _col0 (type: string)
                     Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
           TableScan
-            alias: a
+            alias: b
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
@@ -10695,6 +10101,7 @@ PREHOOK: query: -- union26.q
 
 -- SORT_QUERY_RESULTS
 
+
 EXPLAIN
 SELECT 
 count(1) as counts,
@@ -10720,6 +10127,7 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- union26.q
 
 -- SORT_QUERY_RESULTS
+
 
 EXPLAIN
 SELECT 
@@ -12194,22 +11602,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count(1)
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col2 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -12217,7 +11625,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -12230,40 +11638,40 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string), KEY._col2 (type: bigint)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: _col0 (type: string), _col1 (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -12276,49 +11684,49 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 375 Data size: 3984 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: UDFToInteger(_col0) (type: int), _col1 (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 375 Data size: 3984 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
-              Statistics: Num rows: 375 Data size: 3984 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
               table:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -12343,22 +11751,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count(1)
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col2 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -12366,7 +11774,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -12482,48 +11890,48 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -12536,49 +11944,49 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: UDFToInteger(_col0) (type: int), _col1 (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
               table:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -12719,18 +12127,18 @@ STAGE PLANS:
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
               Limit
                 Number of rows: 1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   sort order: 
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Limit
           Number of rows: 1
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: 1 (type: int)
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -12743,36 +12151,36 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: int)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -12785,36 +12193,36 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: int)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -12827,39 +12235,39 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+              Statistics: Num rows: 2 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: int)
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: int)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -12875,18 +12283,18 @@ STAGE PLANS:
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
               Limit
                 Number of rows: 1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   sort order: 
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Limit
           Number of rows: 1
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: 2 (type: int)
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -12904,18 +12312,18 @@ STAGE PLANS:
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
               Limit
                 Number of rows: 1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   sort order: 
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Limit
           Number of rows: 1
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: 3 (type: int)
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -12933,18 +12341,18 @@ STAGE PLANS:
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
               Limit
                 Number of rows: 1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   sort order: 
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Limit
           Number of rows: 1
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: 4 (type: int)
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: COMPLETE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -13084,22 +12492,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count(1)
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col2 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -13107,7 +12515,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -13120,40 +12528,40 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string), KEY._col2 (type: bigint)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 93000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: _col0 (type: string), _col1 (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -13166,42 +12574,42 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 750 Data size: 7968 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 375 Data size: 3984 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -13214,49 +12622,49 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 875 Data size: 9296 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 437 Data size: 4642 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: UDFToInteger(_col0) (type: int), _col1 (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 437 Data size: 4642 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
-              Statistics: Num rows: 437 Data size: 4642 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 47500 Basic stats: COMPLETE Column stats: COMPLETE
               table:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -13281,22 +12689,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count(1)
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col2 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -13304,7 +12712,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 250 Data size: 46500 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -14351,7 +13759,6 @@ SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
 UNION DISTINCT
 SELECT CAST(key AS BIGINT) AS key FROM t2) a
-ORDER BY key
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test simple union with double
 EXPLAIN
@@ -14359,12 +13766,10 @@ SELECT * FROM
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
 UNION DISTINCT
 SELECT CAST(key AS BIGINT) AS key FROM t2) a
-ORDER BY key
 POSTHOOK: type: QUERY
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
-  Stage-2 depends on stages: Stage-1
-  Stage-0 depends on stages: Stage-2
+  Stage-0 depends on stages: Stage-1
 
 STAGE PLANS:
   Stage: Stage-1
@@ -14412,26 +13817,6 @@ STAGE PLANS:
         Group By Operator
           keys: KEY._col0 (type: double)
           mode: mergepartial
-          outputColumnNames: _col0
-          Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
-          File Output Operator
-            compressed: false
-            table:
-                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
-
-  Stage: Stage-2
-    Map Reduce
-      Map Operator Tree:
-          TableScan
-            Reduce Output Operator
-              key expressions: _col0 (type: double)
-              sort order: +
-              Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
-      Reduce Operator Tree:
-        Select Operator
-          expressions: KEY.reducesinkkey0 (type: double)
           outputColumnNames: _col0
           Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
@@ -14517,7 +13902,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: b
+            alias: t2
             Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: UDFToDouble(key) (type: double)
@@ -14679,7 +14064,7 @@ STAGE PLANS:
                     Map-reduce partition columns: _col0 (type: double)
                     Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
           TableScan
-            alias: t2
+            alias: b
             Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: key is not null (type: boolean)
@@ -14759,14 +14144,14 @@ POSTHOOK: Input: default@t2
 PREHOOK: query: -- Test union with join on the left selecting multiple columns
 EXPLAIN
 SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS STRING) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the left selecting multiple columns
 EXPLAIN
 SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS STRING) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 POSTHOOK: type: QUERY
@@ -14803,7 +14188,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: b
+            alias: t2
             Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: UDFToDouble(key) (type: double), key (type: string)
@@ -14840,7 +14225,7 @@ STAGE PLANS:
                   outputColumnNames: _col0, _col1
                   Statistics: Num rows: 11 Data size: 77 Basic stats: COMPLETE Column stats: NONE
                   Select Operator
-                    expressions: UDFToDouble(UDFToLong(_col0)) (type: double), UDFToString(UDFToDouble(_col1)) (type: string)
+                    expressions: UDFToDouble(UDFToLong(_col0)) (type: double), _col1 (type: string)
                     outputColumnNames: _col0, _col1
                     Statistics: Num rows: 11 Data size: 77 Basic stats: COMPLETE Column stats: NONE
                     Union
@@ -14878,7 +14263,7 @@ STAGE PLANS:
         ListSink
 
 PREHOOK: query: SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS CHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 PREHOOK: type: QUERY
@@ -14886,7 +14271,7 @@ PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
 #### A masked pattern was here ####
 POSTHOOK: query: SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS CHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 POSTHOOK: type: QUERY
@@ -14894,30 +14279,24 @@ POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
 #### A masked pattern was here ####
 0.0	0
-0.0	0.0
 2.0	2
-2.0	2.0
 4.0	4
-4.0	4.0
 5.0	5
-5.0	5.0
 8.0	8
-8.0	8.0
 9.0	9
-9.0	9.0
 PREHOOK: query: -- Test union with join on the right selecting multiple columns
 EXPLAIN
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 PREHOOK: type: QUERY
 POSTHOOK: query: -- Test union with join on the right selecting multiple columns
 EXPLAIN
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 POSTHOOK: type: QUERY
 STAGE DEPENDENCIES:
   Stage-6 is a root stage
@@ -14955,23 +14334,23 @@ STAGE PLANS:
             alias: t2
             Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Select Operator
-              expressions: UDFToDouble(key) (type: double), UDFToDouble(key) (type: double)
+              expressions: UDFToDouble(key) (type: double), key (type: string)
               outputColumnNames: _col0, _col1
               Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
               Union
                 Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
                 Group By Operator
-                  keys: _col0 (type: double), _col1 (type: double)
+                  keys: _col0 (type: double), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
                   Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
                   Reduce Output Operator
-                    key expressions: _col0 (type: double), _col1 (type: double)
+                    key expressions: _col0 (type: double), _col1 (type: string)
                     sort order: ++
-                    Map-reduce partition columns: _col0 (type: double), _col1 (type: double)
+                    Map-reduce partition columns: _col0 (type: double), _col1 (type: string)
                     Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
           TableScan
-            alias: t2
+            alias: b
             Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: key is not null (type: boolean)
@@ -14989,26 +14368,26 @@ STAGE PLANS:
                   outputColumnNames: _col0, _col1
                   Statistics: Num rows: 11 Data size: 77 Basic stats: COMPLETE Column stats: NONE
                   Select Operator
-                    expressions: UDFToDouble(UDFToLong(_col0)) (type: double), UDFToDouble(_col1) (type: double)
+                    expressions: UDFToDouble(UDFToLong(_col0)) (type: double), UDFToString(CAST( _col1 AS varchar(20))) (type: string)
                     outputColumnNames: _col0, _col1
                     Statistics: Num rows: 11 Data size: 77 Basic stats: COMPLETE Column stats: NONE
                     Union
                       Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
                       Group By Operator
-                        keys: _col0 (type: double), _col1 (type: double)
+                        keys: _col0 (type: double), _col1 (type: string)
                         mode: hash
                         outputColumnNames: _col0, _col1
                         Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
                         Reduce Output Operator
-                          key expressions: _col0 (type: double), _col1 (type: double)
+                          key expressions: _col0 (type: double), _col1 (type: string)
                           sort order: ++
-                          Map-reduce partition columns: _col0 (type: double), _col1 (type: double)
+                          Map-reduce partition columns: _col0 (type: double), _col1 (type: string)
                           Statistics: Num rows: 21 Data size: 147 Basic stats: COMPLETE Column stats: NONE
       Local Work:
         Map Reduce Local Work
       Reduce Operator Tree:
         Group By Operator
-          keys: KEY._col0 (type: double), KEY._col1 (type: double)
+          keys: KEY._col0 (type: double), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
           Statistics: Num rows: 10 Data size: 70 Basic stats: COMPLETE Column stats: NONE
@@ -15029,7 +14408,7 @@ STAGE PLANS:
 PREHOOK: query: SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 PREHOOK: type: QUERY
 PREHOOK: Input: default@t1
 PREHOOK: Input: default@t2
@@ -15037,17 +14416,17 @@ PREHOOK: Input: default@t2
 POSTHOOK: query: SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@t1
 POSTHOOK: Input: default@t2
 #### A masked pattern was here ####
-0.0	0.0
-2.0	2.0
-4.0	4.0
-5.0	5.0
-8.0	8.0
-9.0	9.0
+0.0	0
+2.0	2
+4.0	4
+5.0	5
+8.0	8
+9.0	9
 PREHOOK: query: -- union33.q
 
 -- SORT_BEFORE_DIFF
@@ -15077,7 +14456,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a
 PREHOOK: type: QUERY
@@ -15086,7 +14465,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a
 POSTHOOK: type: QUERY
@@ -15102,22 +14481,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 43500 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string)
               outputColumnNames: key
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 43500 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count()
                 keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -15125,11 +14504,11 @@ STAGE PLANS:
           keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: _col0 (type: string), UDFToString(_col1) (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 205 Data size: 55555 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -15142,48 +14521,48 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (UDFToDouble(key) = 0.0) (type: boolean)
-              Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 250 Data size: 44500 Basic stats: COMPLETE Column stats: COMPLETE
               Select Operator
                 expressions: key (type: string), value (type: string)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 44500 Basic stats: COMPLETE Column stats: COMPLETE
                 Union
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 455 Data size: 100055 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     keys: _col0 (type: string), _col1 (type: string)
                     mode: hash
                     outputColumnNames: _col0, _col1
-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
                     Reduce Output Operator
                       key expressions: _col0 (type: string), _col1 (type: string)
                       sort order: ++
                       Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                      Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 455 Data size: 100055 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.TextInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -15208,7 +14587,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a
 PREHOOK: type: QUERY
@@ -15219,7 +14598,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a
 POSTHOOK: type: QUERY
@@ -15238,7 +14617,7 @@ POSTHOOK: Input: default@test_src
 310
 PREHOOK: query: EXPLAIN INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -15247,7 +14626,7 @@ UNION DISTINCT
 PREHOOK: type: QUERY
 POSTHOOK: query: EXPLAIN INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -15266,22 +14645,22 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 43500 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string)
               outputColumnNames: key
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 43500 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 aggregations: count()
                 keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string)
                   sort order: +
                   Map-reduce partition columns: _col0 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
                   value expressions: _col1 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
@@ -15289,11 +14668,11 @@ STAGE PLANS:
           keys: KEY._col0 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 205 Data size: 19475 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: _col0 (type: string), UDFToString(_col1) (type: string)
             outputColumnNames: _col0, _col1
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 205 Data size: 55555 Basic stats: COMPLETE Column stats: COMPLETE
             File Output Operator
               compressed: false
               table:
@@ -15306,48 +14685,48 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 455 Data size: 100055 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             alias: src
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (UDFToDouble(key) = 0.0) (type: boolean)
-              Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 250 Data size: 44500 Basic stats: COMPLETE Column stats: COMPLETE
               Select Operator
                 expressions: key (type: string), value (type: string)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 44500 Basic stats: COMPLETE Column stats: COMPLETE
                 Union
-                  Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 455 Data size: 100055 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     keys: _col0 (type: string), _col1 (type: string)
                     mode: hash
                     outputColumnNames: _col0, _col1
-                    Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
                     Reduce Output Operator
                       key expressions: _col0 (type: string), _col1 (type: string)
                       sort order: ++
                       Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                      Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                      Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 227 Data size: 61517 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.TextInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -15369,7 +14748,7 @@ STAGE PLANS:
 
 PREHOOK: query: INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -15380,7 +14759,7 @@ PREHOOK: Input: default@src
 PREHOOK: Output: default@test_src
 POSTHOOK: query: INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -15505,7 +14884,7 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 PREHOOK: type: QUERY
 POSTHOOK: query: -- When we convert the Join of sub1 and sub0 into a MapJoin,
 -- we can use a single MR job to evaluate this entire query.
@@ -15514,17 +14893,16 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 POSTHOOK: type: QUERY
 STAGE DEPENDENCIES:
-  Stage-5 is a root stage
-  Stage-8 depends on stages: Stage-5
-  Stage-2 depends on stages: Stage-8
-  Stage-3 depends on stages: Stage-2
-  Stage-0 depends on stages: Stage-3
+  Stage-4 is a root stage
+  Stage-7 depends on stages: Stage-4
+  Stage-2 depends on stages: Stage-7
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
-  Stage: Stage-5
+  Stage: Stage-4
     Map Reduce
       Map Operator Tree:
           TableScan
@@ -15578,7 +14956,7 @@ STAGE PLANS:
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
                 serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
-  Stage: Stage-8
+  Stage: Stage-7
     Map Reduce Local Work
       Alias -> Map Local Tables:
         $hdt$_0-subquery1:$hdt$_0-subquery1:$hdt$_0:src10_1 
@@ -15657,27 +15035,6 @@ STAGE PLANS:
           Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
-            table:
-                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
-
-  Stage: Stage-3
-    Map Reduce
-      Map Operator Tree:
-          TableScan
-            Reduce Output Operator
-              key expressions: _col0 (type: string)
-              sort order: +
-              Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
-              value expressions: _col1 (type: string)
-      Reduce Operator Tree:
-        Select Operator
-          expressions: KEY.reducesinkkey0 (type: string), VALUE._col0 (type: string)
-          outputColumnNames: _col0, _col1
-          Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
-          File Output Operator
-            compressed: false
             Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
@@ -15694,7 +15051,7 @@ PREHOOK: query: SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 PREHOOK: type: QUERY
 PREHOOK: Input: default@src10_1
 PREHOOK: Input: default@src10_2
@@ -15705,7 +15062,7 @@ POSTHOOK: query: SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src10_1
 POSTHOOK: Input: default@src10_2
@@ -15731,7 +15088,7 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 PREHOOK: type: QUERY
 POSTHOOK: query: -- When we do not convert the Join of sub1 and sub0 into a MapJoin,
 -- we need to use two MR jobs to evaluate this query.
@@ -15742,14 +15099,13 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 POSTHOOK: type: QUERY
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
-  Stage-2 depends on stages: Stage-1, Stage-5
-  Stage-3 depends on stages: Stage-2
-  Stage-5 is a root stage
-  Stage-0 depends on stages: Stage-3
+  Stage-2 depends on stages: Stage-1, Stage-4
+  Stage-4 is a root stage
+  Stage-0 depends on stages: Stage-2
 
 STAGE PLANS:
   Stage: Stage-1
@@ -15839,34 +15195,13 @@ STAGE PLANS:
           Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
-            table:
-                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
-
-  Stage: Stage-3
-    Map Reduce
-      Map Operator Tree:
-          TableScan
-            Reduce Output Operator
-              key expressions: _col0 (type: string)
-              sort order: +
-              Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
-              value expressions: _col1 (type: string)
-      Reduce Operator Tree:
-        Select Operator
-          expressions: KEY.reducesinkkey0 (type: string), VALUE._col0 (type: string)
-          outputColumnNames: _col0, _col1
-          Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
-          File Output Operator
-            compressed: false
             Statistics: Num rows: 10 Data size: 103 Basic stats: COMPLETE Column stats: NONE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
                 serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
-  Stage: Stage-5
+  Stage: Stage-4
     Map Reduce
       Map Operator Tree:
           TableScan
@@ -15930,7 +15265,7 @@ PREHOOK: query: SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 PREHOOK: type: QUERY
 PREHOOK: Input: default@src10_1
 PREHOOK: Input: default@src10_2
@@ -15941,7 +15276,7 @@ POSTHOOK: query: SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key
+) alias1
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src10_1
 POSTHOOK: Input: default@src10_2
@@ -16105,7 +15440,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -16281,7 +15616,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: s1
+            alias: s2
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
@@ -16417,45 +15752,45 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 26 Data size: 463 Basic stats: COMPLETE Column stats: PARTIAL
+              Statistics: Num rows: 26 Data size: 4647 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                  Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             alias: s2
-            Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 25 Data size: 4375 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 25 Data size: 4375 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 26 Data size: 463 Basic stats: COMPLETE Column stats: PARTIAL
+                Statistics: Num rows: 26 Data size: 4647 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                  Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                    Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+          Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+            Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.TextInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
@@ -16593,55 +15928,55 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 26 Data size: 463 Basic stats: COMPLETE Column stats: PARTIAL
+              Statistics: Num rows: 26 Data size: 4647 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string)
-                  Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                  Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
             alias: s2
-            Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 25 Data size: 4375 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 25 Data size: 4375 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 26 Data size: 463 Basic stats: COMPLETE Column stats: PARTIAL
+                Statistics: Num rows: 26 Data size: 4647 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                  Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string)
-                    Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+                    Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+          Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
             expressions: _col0 (type: string)
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 272 Basic stats: COMPLETE Column stats: PARTIAL
+            Statistics: Num rows: 13 Data size: 3536 Basic stats: COMPLETE Column stats: COMPLETE
             Group By Operator
               aggregations: count(1)
               keys: _col0 (type: string)
               mode: complete
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 1 Data size: 96 Basic stats: COMPLETE Column stats: PARTIAL
+              Statistics: Num rows: 13 Data size: 1248 Basic stats: COMPLETE Column stats: COMPLETE
               File Output Operator
                 compressed: false
-                Statistics: Num rows: 1 Data size: 96 Basic stats: COMPLETE Column stats: PARTIAL
+                Statistics: Num rows: 13 Data size: 1248 Basic stats: COMPLETE Column stats: COMPLETE
                 table:
                     input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -16715,48 +16050,48 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
-            alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            alias: s2
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -16769,45 +16104,45 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
-            alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            alias: s3
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -17172,48 +16507,48 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
-            alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            alias: s2
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
             table:
@@ -17226,49 +16561,49 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Union
-              Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
               Group By Operator
                 keys: _col0 (type: string), _col1 (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string)
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           TableScan
-            alias: s1
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            alias: s3
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Select Operator
               expressions: key (type: string), value (type: string)
               outputColumnNames: _col0, _col1
-              Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
               Union
-                Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 1000 Data size: 178000 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   keys: _col0 (type: string), _col1 (type: string)
                   mode: hash
                   outputColumnNames: _col0, _col1
-                  Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
                   Reduce Output Operator
                     key expressions: _col0 (type: string), _col1 (type: string)
                     sort order: ++
                     Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
-                    Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
+                    Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
       Reduce Operator Tree:
         Group By Operator
           keys: KEY._col0 (type: string), KEY._col1 (type: string)
           mode: mergepartial
           outputColumnNames: _col0, _col1
-          Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
           Select Operator
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Group By Operator
               aggregations: count(1)
               mode: hash
               outputColumnNames: _col0
-              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               File Output Operator
                 compressed: false
                 table:
@@ -17282,17 +16617,17 @@ STAGE PLANS:
           TableScan
             Reduce Output Operator
               sort order: 
-              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
               value expressions: _col0 (type: bigint)
       Reduce Operator Tree:
         Group By Operator
           aggregations: count(VALUE._col0)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
           File Output Operator
             compressed: false
-            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
             table:
                 input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                 output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat

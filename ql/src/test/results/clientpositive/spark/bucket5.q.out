@@ -30,42 +30,6 @@ FROM src
 INSERT OVERWRITE TABLE bucketed_table SELECT key, value
 INSERT OVERWRITE TABLE unbucketed_table SELECT key, value cluster by key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            src
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               bucketed_table
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               unbucketed_table
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               value
-      TOK_CLUSTERBY
-         TOK_TABLE_OR_COL
-            key
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-0 depends on stages: Stage-2
@@ -109,7 +73,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -129,7 +93,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -177,7 +141,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -197,7 +161,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -235,6 +199,7 @@ STAGE PLANS:
                       input format: org.apache.hadoop.mapred.TextInputFormat
                       output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                       properties:
+                        COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                         SORTBUCKETCOLSPREFIX TRUE
                         bucket_count 2
                         bucket_field_name key
@@ -243,9 +208,13 @@ STAGE PLANS:
                         columns.types int:string
 #### A masked pattern was here ####
                         name default.bucketed_table
+                        numFiles 0
+                        numRows 0
+                        rawDataSize 0
                         serialization.ddl struct bucketed_table { i32 key, string value}
                         serialization.format 1
                         serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                        totalSize 0
 #### A masked pattern was here ####
                       serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                       name: default.bucketed_table
@@ -270,15 +239,20 @@ STAGE PLANS:
                       input format: org.apache.hadoop.mapred.TextInputFormat
                       output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                       properties:
+                        COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                         bucket_count -1
                         columns key,value
                         columns.comments 
                         columns.types int:string
 #### A masked pattern was here ####
                         name default.unbucketed_table
+                        numFiles 0
+                        numRows 0
+                        rawDataSize 0
                         serialization.ddl struct unbucketed_table { i32 key, string value}
                         serialization.format 1
                         serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                        totalSize 0
 #### A masked pattern was here ####
                       serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                       name: default.unbucketed_table
@@ -295,6 +269,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 SORTBUCKETCOLSPREFIX TRUE
                 bucket_count 2
                 bucket_field_name key
@@ -303,9 +278,13 @@ STAGE PLANS:
                 columns.types int:string
 #### A masked pattern was here ####
                 name default.bucketed_table
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct bucketed_table { i32 key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.bucketed_table
@@ -323,15 +302,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types int:string
 #### A masked pattern was here ####
                 name default.unbucketed_table
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct unbucketed_table { i32 key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.unbucketed_table

@@ -30,6 +30,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Stopwatch;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hive.ptest.execution.conf.Host;
 import org.apache.hive.ptest.execution.conf.TestBatch;
 import org.apache.hive.ptest.execution.ssh.RSyncCommand;
@@ -109,10 +110,10 @@ class HostExecutor {
           executeTests(parallelWorkQueue, isolatedWorkQueue, failedTestResults);
         } finally {
           stopwatch.stop();
-          mLogger.info("Finishing submitTests on host: {}. ElapsedTime(seconds)={}," +
+          mLogger.info("Finishing submitTests on host: {}. ElapsedTime(ms)={}," +
               " NumParallelBatchesProcessed={}, NumIsolatedBatchesProcessed={}",
               new Object[]{getHost().toString(),
-                  stopwatch.elapsed(TimeUnit.SECONDS), numParallelBatchesProcessed,
+                  stopwatch.elapsed(TimeUnit.MILLISECONDS), numParallelBatchesProcessed,
                   numIsolatedBatchesProcessed});
         }
         return null;
@@ -174,8 +175,8 @@ class HostExecutor {
                   }
                 } finally {
                   sw.stop();
-                  mLogger.info("Finished processing parallel batch [{}] on host {}. ElapsedTime(seconds)={}",
-                      new Object[]{batch.getName(), getHost().toShortString(), sw.elapsed(TimeUnit.SECONDS)});
+                  mLogger.info("Finished processing parallel batch [{}] on host {}. ElapsedTime(ms)={}",
+                      new Object[]{batch.getName(), getHost().toShortString(), sw.elapsed(TimeUnit.MILLISECONDS)});
                 }
               }
             } while(!mShutdown && !parallelWorkQueue.isEmpty());
@@ -213,8 +214,8 @@ class HostExecutor {
               }
             } finally {
               sw.stop();
-              mLogger.info("Finished processing isolated batch [{}] on host {}. ElapsedTime(seconds)={}",
-                  new Object[]{batch.getName(), getHost().toShortString(), sw.elapsed(TimeUnit.SECONDS)});
+              mLogger.info("Finished processing isolated batch [{}] on host {}. ElapsedTime(ms)={}",
+                  new Object[]{batch.getName(), getHost().toShortString(), sw.elapsed(TimeUnit.MILLISECONDS)});
             }
           }
         } while(!mShutdown && !isolatedWorkQueue.isEmpty());
@@ -243,6 +244,8 @@ class HostExecutor {
     templateVariables.put("testArguments", batch.getTestArguments());
     templateVariables.put("localDir", drone.getLocalDirectory());
     templateVariables.put("logDir", drone.getLocalLogDirectory());
+    Preconditions.checkArgument(StringUtils.isNotBlank(batch.getTestModuleRelativeDir()));
+    templateVariables.put("testModule", batch.getTestModuleRelativeDir());
     String command = Templates.getTemplateResult("bash $localDir/$instanceName/scratch/" + script.getName(),
         templateVariables);
     Templates.writeTemplateResult("batch-exec.vm", script, templateVariables);
@@ -254,9 +257,9 @@ class HostExecutor {
         drone.getHost(), drone.getInstance(), command, true).
         call();
     sw.stop();
-    mLogger.info("Completed executing tests for batch [{}] on host {}. ElapsedTime(seconds)={}",
+    mLogger.info("Completed executing tests for batch [{}] on host {}. ElapsedTime(ms)={}",
         new Object[]{batch.getName(),
-            getHost().toShortString(), sw.elapsed(TimeUnit.SECONDS)});
+            getHost().toShortString(), sw.elapsed(TimeUnit.MILLISECONDS)});
     File batchLogDir = null;
     if(sshResult.getExitCode() == Constants.EXIT_CODE_UNKNOWN) {
       throw new AbortDroneException("Drone " + drone.toString() + " exited with " +

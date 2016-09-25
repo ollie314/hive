@@ -19,7 +19,6 @@ package org.apache.hadoop.hive.metastore;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import java.util.Random;
 
 import junit.framework.TestCase;
 
@@ -32,6 +31,7 @@ import org.apache.hive.common.util.HiveStringUtils;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.ObjectStore;
 import org.apache.hadoop.hive.ql.Driver;
+import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
 
@@ -96,8 +96,9 @@ public class TestMetastoreVersion extends TestCase {
     // session creation should fail since the schema didn't get created
     try {
       SessionState.start(new CliSessionState(hiveConf));
-      fail("Expected exception");
-    } catch (RuntimeException re) {
+      Hive.get(hiveConf).getMSC();
+      fail("An exception is expected since schema is not created.");
+    } catch (Exception re) {
       LOG.info("Exception in testVersionRestriction: " + re, re);
       String msg = HiveStringUtils.stringifyException(re);
       assertTrue("Expected 'Version information not found in metastore' in: " + msg, msg
@@ -106,12 +107,14 @@ public class TestMetastoreVersion extends TestCase {
   }
 
   /***
-   * Test that with no verification, hive populates the schema and version correctly
+   * Test that with no verification, and record verification enabled, hive populates the schema
+   * and version correctly
    * @throws Exception
    */
   public void testMetastoreVersion () throws Exception {
     // let the schema and version be auto created
     System.setProperty(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION.toString(), "false");
+    System.setProperty(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION_RECORD_VERSION.toString(), "true");
     hiveConf = new HiveConf(this.getClass());
     SessionState.start(new CliSessionState(hiveConf));
     driver = new Driver(hiveConf);
@@ -134,6 +137,7 @@ public class TestMetastoreVersion extends TestCase {
     driver = new Driver(hiveConf);
     driver.run("show tables");
 
+    ObjectStore.setSchemaVerified(false);
     hiveConf.setBoolVar(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION, true);
     setVersion(hiveConf, MetaStoreSchemaInfo.getHiveSchemaVersion());
     driver = new Driver(hiveConf);
@@ -152,9 +156,31 @@ public class TestMetastoreVersion extends TestCase {
     driver = new Driver(hiveConf);
     driver.run("show tables");
 
+    ObjectStore.setSchemaVerified(false);
     System.setProperty(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION.toString(), "true");
     hiveConf = new HiveConf(this.getClass());
     setVersion(hiveConf, "fooVersion");
+    SessionState.start(new CliSessionState(hiveConf));
+    driver = new Driver(hiveConf);
+    CommandProcessorResponse proc = driver.run("show tables");
+    assertTrue(proc.getResponseCode() != 0);
+  }
+
+  /**
+   * Store higher version in metastore and verify that hive works with the compatible
+   * version
+   * @throws Exception
+   */
+  public void testVersionCompatibility () throws Exception {
+    System.setProperty(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION.toString(), "false");
+    hiveConf = new HiveConf(this.getClass());
+    SessionState.start(new CliSessionState(hiveConf));
+    driver = new Driver(hiveConf);
+    driver.run("show tables");
+
+    System.setProperty(HiveConf.ConfVars.METASTORE_SCHEMA_VERIFICATION.toString(), "true");
+    hiveConf = new HiveConf(this.getClass());
+    setVersion(hiveConf, "3.9000.0");
     SessionState.start(new CliSessionState(hiveConf));
     driver = new Driver(hiveConf);
     CommandProcessorResponse proc = driver.run("show tables");

@@ -28,23 +28,6 @@ POSTHOOK: query: -- list bucketing DML
 explain extended
 insert overwrite table list_bucketing select * from src
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            src
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               list_bucketing
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -73,15 +56,20 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                       bucket_count -1
                       columns key,value
                       columns.comments 
                       columns.types string:string
 #### A masked pattern was here ####
                       name default.list_bucketing
+                      numFiles 0
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct list_bucketing { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                      totalSize 0
 #### A masked pattern was here ####
                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                     name: default.list_bucketing
@@ -97,7 +85,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -117,7 +105,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -147,15 +135,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value
                 columns.comments 
                 columns.types string:string
 #### A masked pattern was here ####
                 name default.list_bucketing
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct list_bucketing { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.list_bucketing
@@ -249,31 +242,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: explain extended
 select key, value from list_bucketing where key = "484"
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            list_bucketing
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               value
-      TOK_WHERE
-         =
-            TOK_TABLE_OR_COL
-               key
-            "484"
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1

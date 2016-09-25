@@ -45,6 +45,7 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.rex.RexWindow;
 import org.apache.calcite.rex.RexWindowBound;
@@ -55,6 +56,8 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
 import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
+import org.apache.hadoop.hive.ql.optimizer.calcite.druid.DruidQuery;
+import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveAggregate;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveGroupingID;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortLimit;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveTableScan;
@@ -89,9 +92,9 @@ public class ASTConverter {
     this.derivedTableCount = dtCounterInitVal;
   }
 
-  public static ASTNode convert(final RelNode relNode, List<FieldSchema> resultSchema)
+  public static ASTNode convert(final RelNode relNode, List<FieldSchema> resultSchema, boolean alignColumns)
       throws CalciteSemanticException {
-    RelNode root = PlanModifierForASTConv.convertOpTree(relNode, resultSchema);
+    RelNode root = PlanModifierForASTConv.convertOpTree(relNode, resultSchema, alignColumns);
     ASTConverter c = new ASTConverter(root, 0);
     return c.convert();
   }
@@ -141,10 +144,18 @@ public class ASTConverter {
         b = ASTBuilder.construct(HiveParser.TOK_GROUPBY, "TOK_GROUPBY");
       }
 
-      for (int i : groupBy.getGroupSet()) {
-        RexInputRef iRef = new RexInputRef(i, groupBy.getCluster().getTypeFactory()
-            .createSqlType(SqlTypeName.ANY));
+      HiveAggregate hiveAgg = (HiveAggregate) groupBy;
+      for (int pos : hiveAgg.getAggregateColumnsOrder()) {
+        RexInputRef iRef = new RexInputRef(groupBy.getGroupSet().nth(pos),
+            groupBy.getCluster().getTypeFactory().createSqlType(SqlTypeName.ANY));
         b.add(iRef.accept(new RexVisitor(schema)));
+      }
+      for (int pos = 0; pos < groupBy.getGroupCount(); pos++) {
+        if (!hiveAgg.getAggregateColumnsOrder().contains(pos)) {
+          RexInputRef iRef = new RexInputRef(groupBy.getGroupSet().nth(pos),
+              groupBy.getCluster().getTypeFactory().createSqlType(SqlTypeName.ANY));
+          b.add(iRef.accept(new RexVisitor(schema)));
+        }
       }
 
       //Grouping sets expressions
@@ -189,6 +200,10 @@ public class ASTConverter {
       int i = 0;
 
       for (RexNode r : select.getChildExps()) {
+        if (RexUtil.isNull(r) && r.getType().getSqlTypeName() != SqlTypeName.NULL) {
+          // It is NULL value with different type, we need to introduce a CAST to keep it
+          r = select.getCluster().getRexBuilder().makeAbstractCast(r.getType(), r);
+        }
         ASTNode expr = r.accept(new RexVisitor(schema, r instanceof RexLiteral));
         String alias = select.getRowType().getFieldNames().get(i++);
         ASTNode selectExpr = ASTBuilder.selectExpr(expr, alias);
@@ -611,7 +626,13 @@ public class ASTConverter {
     private static final long serialVersionUID = 1L;
 
     Schema(TableScan scan) {
-      String tabName = ((HiveTableScan) scan).getTableAlias();
+      HiveTableScan hts;
+      if (scan instanceof DruidQuery) {
+        hts = (HiveTableScan) ((DruidQuery)scan).getTableScan();
+      } else {
+        hts = (HiveTableScan) scan;
+      }
+      String tabName = hts.getTableAlias();
       for (RelDataTypeField field : scan.getRowType().getFieldList()) {
         add(new ColumnInfo(tabName, field.getName()));
       }

@@ -206,7 +206,7 @@ functionName
     | 
     (functionIdentifier) => functionIdentifier
     |
-    {!useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsCastFunctionName -> Identifier[$sql11ReservedKeywordsUsedAsCastFunctionName.text]
+    {!useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsCastFunctionName -> Identifier[$sql11ReservedKeywordsUsedAsCastFunctionName.start]
     ;
 
 castExpression
@@ -241,6 +241,52 @@ whenExpression
     KW_END -> ^(TOK_FUNCTION KW_WHEN expression*)
     ;
 
+floorExpression
+    :
+    KW_FLOOR
+    LPAREN
+          expression
+          (KW_TO
+          (floorUnit=floorDateQualifiers))?
+    RPAREN
+    -> {floorUnit != null}? ^(TOK_FUNCTION $floorUnit expression)
+    -> ^(TOK_FUNCTION Identifier["floor"] expression)
+    ;
+
+floorDateQualifiers
+    :
+    KW_YEAR -> Identifier["floor_year"]
+    | KW_QUARTER -> Identifier["floor_quarter"]
+    | KW_MONTH -> Identifier["floor_month"]
+    | KW_WEEK -> Identifier["floor_week"]
+    | KW_DAY -> Identifier["floor_day"]
+    | KW_HOUR -> Identifier["floor_hour"]
+    | KW_MINUTE -> Identifier["floor_minute"]
+    | KW_SECOND -> Identifier["floor_second"]
+    ;
+
+extractExpression
+    :
+    KW_EXTRACT
+    LPAREN
+          (timeUnit=timeQualifiers)
+          KW_FROM
+          expression
+    RPAREN -> ^(TOK_FUNCTION $timeUnit expression)
+    ;
+
+timeQualifiers
+    :
+    KW_YEAR -> Identifier["year"]
+    | KW_QUARTER -> Identifier["quarter"]
+    | KW_MONTH -> Identifier["month"]
+    | KW_WEEK -> Identifier["weekofyear"]
+    | KW_DAY -> Identifier["day"]
+    | KW_HOUR -> Identifier["hour"]
+    | KW_MINUTE -> Identifier["minute"]
+    | KW_SECOND -> Identifier["second"]
+    ;
+
 constant
 @init { gParent.pushMsg("constant", state); }
 @after { gParent.popMsg(state); }
@@ -251,10 +297,8 @@ constant
     | intervalLiteral
     | StringLiteral
     | stringLiteralSequence
-    | BigintLiteral
-    | SmallintLiteral
-    | TinyintLiteral
-    | DecimalLiteral
+    | IntegralLiteral
+    | NumberLiteral
     | charSetStringLiteral
     | booleanValue
     ;
@@ -325,6 +369,8 @@ atomExpression
     (KW_NULL) => KW_NULL -> TOK_NULL
     | (constant) => constant
     | castExpression
+    | extractExpression
+    | floorExpression
     | caseExpression
     | whenExpression
     | (functionName LPAREN) => function
@@ -472,10 +518,10 @@ expressions
 precedenceEqualExpressionMutiple
     :
     (LPAREN precedenceBitwiseOrExpression (COMMA precedenceBitwiseOrExpression)+ RPAREN -> ^(TOK_FUNCTION Identifier["struct"] precedenceBitwiseOrExpression+))
-    ( (KW_IN LPAREN expressionsToStruct (COMMA expressionsToStruct)+ RPAREN)
-       -> ^(TOK_FUNCTION KW_IN $precedenceEqualExpressionMutiple expressionsToStruct+)
-    | (KW_NOT KW_IN LPAREN expressionsToStruct (COMMA expressionsToStruct)+ RPAREN)
-       -> ^(KW_NOT ^(TOK_FUNCTION KW_IN $precedenceEqualExpressionMutiple expressionsToStruct+)))
+    ( (KW_IN LPAREN expressionsToStruct (COMMA expressionsToStruct)* RPAREN)
+       -> ^(TOK_FUNCTION KW_IN $precedenceEqualExpressionMutiple expressionsToStruct*)
+    | (KW_NOT KW_IN LPAREN expressionsToStruct (COMMA expressionsToStruct)* RPAREN)
+       -> ^(KW_NOT ^(TOK_FUNCTION KW_IN $precedenceEqualExpressionMutiple expressionsToStruct*)))
     ;
 
 expressionsToStruct
@@ -568,6 +614,7 @@ sysFuncNames
     | KW_IF
     | KW_CASE
     | KW_WHEN
+    | KW_FLOOR
     | KW_TINYINT
     | KW_SMALLINT
     | KW_INT
@@ -614,10 +661,10 @@ descFuncNames
 identifier
     :
     Identifier
-    | nonReserved -> Identifier[$nonReserved.text]
+    | nonReserved -> Identifier[$nonReserved.start]
     // If it decides to support SQL11 reserved keywords, i.e., useSQL11ReservedKeywordsForIdentifier()=false, 
     // the sql11keywords in existing q tests will NOT be added back.
-    | {useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsIdentifier -> Identifier[$sql11ReservedKeywordsUsedAsIdentifier.text]
+    | {useSQL11ReservedKeywordsForIdentifier()}? sql11ReservedKeywordsUsedAsIdentifier -> Identifier[$sql11ReservedKeywordsUsedAsIdentifier.start]
     ;
 
 functionIdentifier
@@ -645,7 +692,7 @@ principalIdentifier
 //http://www.postgresql.org/docs/9.5/static/sql-keywords-appendix.html
 nonReserved
     :
-    KW_ADD | KW_ADMIN | KW_AFTER | KW_ANALYZE | KW_ARCHIVE | KW_ASC | KW_BEFORE | KW_BUCKET | KW_BUCKETS
+    KW_ABORT | KW_ADD | KW_ADMIN | KW_AFTER | KW_ANALYZE | KW_ARCHIVE | KW_ASC | KW_BEFORE | KW_BUCKET | KW_BUCKETS
     | KW_CASCADE | KW_CHANGE | KW_CLUSTER | KW_CLUSTERED | KW_CLUSTERSTATUS | KW_COLLECTION | KW_COLUMNS
     | KW_COMMENT | KW_COMPACT | KW_COMPACTIONS | KW_COMPUTE | KW_CONCATENATE | KW_CONTINUE | KW_DATA | KW_DAY
     | KW_DATABASES | KW_DATETIME | KW_DBPROPERTIES | KW_DEFERRED | KW_DEFINED | KW_DELIMITED | KW_DEPENDENCY 
@@ -656,13 +703,13 @@ nonReserved
     | KW_KEYS | KW_KEY_TYPE | KW_LAST | KW_LIMIT | KW_OFFSET | KW_LINES | KW_LOAD | KW_LOCATION | KW_LOCK | KW_LOCKS | KW_LOGICAL | KW_LONG
     | KW_MAPJOIN | KW_MATERIALIZED | KW_METADATA | KW_MINUS | KW_MINUTE | KW_MONTH | KW_MSCK | KW_NOSCAN | KW_NO_DROP | KW_NULLS | KW_OFFLINE
     | KW_OPTION | KW_OUTPUTDRIVER | KW_OUTPUTFORMAT | KW_OVERWRITE | KW_OWNER | KW_PARTITIONED | KW_PARTITIONS | KW_PLUS | KW_PRETTY
-    | KW_PRINCIPALS | KW_PROTECTION | KW_PURGE | KW_READ | KW_READONLY | KW_REBUILD | KW_RECORDREADER | KW_RECORDWRITER
+    | KW_PRINCIPALS | KW_PROTECTION | KW_PURGE | KW_QUARTER | KW_READ | KW_READONLY | KW_REBUILD | KW_RECORDREADER | KW_RECORDWRITER
     | KW_RELOAD | KW_RENAME | KW_REPAIR | KW_REPLACE | KW_REPLICATION | KW_RESTRICT | KW_REWRITE
     | KW_ROLE | KW_ROLES | KW_SCHEMA | KW_SCHEMAS | KW_SECOND | KW_SEMI | KW_SERDE | KW_SERDEPROPERTIES | KW_SERVER | KW_SETS | KW_SHARED
     | KW_SHOW | KW_SHOW_DATABASE | KW_SKEWED | KW_SORT | KW_SORTED | KW_SSL | KW_STATISTICS | KW_STORED
     | KW_STREAMTABLE | KW_STRING | KW_STRUCT | KW_TABLES | KW_TBLPROPERTIES | KW_TEMPORARY | KW_TERMINATED
     | KW_TINYINT | KW_TOUCH | KW_TRANSACTIONS | KW_UNARCHIVE | KW_UNDO | KW_UNIONTYPE | KW_UNLOCK | KW_UNSET
-    | KW_UNSIGNED | KW_URI | KW_USE | KW_UTC | KW_UTCTIMESTAMP | KW_VALUE_TYPE | KW_VIEW | KW_WHILE | KW_YEAR
+    | KW_UNSIGNED | KW_URI | KW_USE | KW_UTC | KW_UTCTIMESTAMP | KW_VALUE_TYPE | KW_VIEW | KW_WEEK | KW_WHILE | KW_YEAR
     | KW_WORK
     | KW_TRANSACTION
     | KW_WRITE
@@ -670,6 +717,11 @@ nonReserved
     | KW_LEVEL
     | KW_SNAPSHOT
     | KW_AUTOCOMMIT
+    | KW_RELY
+    | KW_NORELY
+    | KW_VALIDATE
+    | KW_NOVALIDATE
+    | KW_KEY
 ;
 
 //The following SQL2011 reserved keywords are used as cast function name only, but not as identifiers.
@@ -692,5 +744,10 @@ sql11ReservedKeywordsUsedAsIdentifier
     | KW_ROLLUP | KW_ROW | KW_ROWS | KW_SET | KW_SMALLINT | KW_TABLE | KW_TIMESTAMP | KW_TO | KW_TRIGGER | KW_TRUE 
     | KW_TRUNCATE | KW_UNION | KW_UPDATE | KW_USER | KW_USING | KW_VALUES | KW_WITH 
 //The following two keywords come from MySQL. Although they are not keywords in SQL2011, they are reserved keywords in MySQL.    
-    | KW_REGEXP | KW_RLIKE
+    | KW_REGEXP | KW_RLIKE 
+    | KW_PRIMARY
+    | KW_FOREIGN
+    | KW_CONSTRAINT
+    | KW_REFERENCES
+    | KW_PRECISION
     ;

@@ -44,9 +44,9 @@ public class TestLlapDaemonProtocolServerImpl {
     int numHandlers = HiveConf.getIntVar(daemonConf, ConfVars.LLAP_DAEMON_RPC_NUM_HANDLERS);
     ContainerRunner containerRunnerMock = mock(ContainerRunner.class);
     LlapProtocolServerImpl server =
-        new LlapProtocolServerImpl(numHandlers, containerRunnerMock,
+        new LlapProtocolServerImpl(null, numHandlers, containerRunnerMock,
            new AtomicReference<InetSocketAddress>(), new AtomicReference<InetSocketAddress>(),
-           rpcPort, rpcPort + 1);
+           rpcPort, rpcPort + 1, null);
     when(containerRunnerMock.submitWork(any(SubmitWorkRequestProto.class))).thenReturn(
         SubmitWorkResponseProto
             .newBuilder()
@@ -59,7 +59,7 @@ public class TestLlapDaemonProtocolServerImpl {
 
       LlapProtocolBlockingPB client =
           new LlapProtocolClientImpl(new Configuration(), serverAddr.getHostName(),
-              serverAddr.getPort(), null, null);
+              serverAddr.getPort(), null, null, null);
       SubmitWorkResponseProto responseProto = client.submitWork(null,
           SubmitWorkRequestProto.newBuilder()
               .setAmHost("amhost")

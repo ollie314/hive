@@ -46,6 +46,13 @@ public class CreateViewDesc extends DDLDesc implements Serializable {
   private boolean ifNotExists;
   private boolean orReplace;
   private boolean isAlterViewAs;
+  private boolean isMaterialized;
+  private String inputFormat;
+  private String outputFormat;
+  private String location; // only used for materialized views
+  private String serde; // only used for materialized views
+  private String storageHandler; // only used for materialized views
+  private Map<String, String> serdeProps; // only used for materialized views
 
   /**
    * For serialization only.
@@ -53,18 +60,75 @@ public class CreateViewDesc extends DDLDesc implements Serializable {
   public CreateViewDesc() {
   }
 
-  public CreateViewDesc(String viewName, List<FieldSchema> schema,
-      String comment, Map<String, String> tblProps,
-      List<String> partColNames, boolean ifNotExists,
-      boolean orReplace, boolean isAlterViewAs) {
+  /**
+   * Used to create a materialized view descriptor
+   * @param viewName
+   * @param schema
+   * @param comment
+   * @param tblProps
+   * @param partColNames
+   * @param ifNotExists
+   * @param orReplace
+   * @param isAlterViewAs
+   * @param inputFormat
+   * @param outputFormat
+   * @param location
+   * @param serde
+   * @param storageHandler
+   * @param serdeProps
+   */
+  public CreateViewDesc(String viewName, List<FieldSchema> schema, String comment,
+          Map<String, String> tblProps, List<String> partColNames,
+          boolean ifNotExists, boolean orReplace, boolean isAlterViewAs,
+          String inputFormat, String outputFormat, String location,
+          String serde, String storageHandler, Map<String, String> serdeProps) {
     this.viewName = viewName;
     this.schema = schema;
-    this.comment = comment;
     this.tblProps = tblProps;
     this.partColNames = partColNames;
+    this.comment = comment;
     this.ifNotExists = ifNotExists;
     this.orReplace = orReplace;
     this.isAlterViewAs = isAlterViewAs;
+    this.isMaterialized = true;
+    this.inputFormat = inputFormat;
+    this.outputFormat = outputFormat;
+    this.location = location;
+    this.serde = serde;
+    this.storageHandler = storageHandler;
+    this.serdeProps = serdeProps;
+  }
+
+  /**
+   * Used to create a view descriptor
+   * @param viewName
+   * @param schema
+   * @param comment
+   * @param tblProps
+   * @param partColNames
+   * @param ifNotExists
+   * @param orReplace
+   * @param isAlterViewAs
+   * @param inputFormat
+   * @param outputFormat
+   * @param serde
+   */
+  public CreateViewDesc(String viewName, List<FieldSchema> schema, String comment,
+                        Map<String, String> tblProps, List<String> partColNames,
+                        boolean ifNotExists, boolean orReplace, boolean isAlterViewAs,
+                        String inputFormat, String outputFormat, String serde) {
+    this.viewName = viewName;
+    this.schema = schema;
+    this.tblProps = tblProps;
+    this.partColNames = partColNames;
+    this.comment = comment;
+    this.ifNotExists = ifNotExists;
+    this.orReplace = orReplace;
+    this.isAlterViewAs = isAlterViewAs;
+    this.isMaterialized = false;
+    this.inputFormat = inputFormat;
+    this.outputFormat = outputFormat;
+    this.serde = serde;
   }
 
   @Explain(displayName = "name", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED })
@@ -172,4 +236,41 @@ public class CreateViewDesc extends DDLDesc implements Serializable {
   public void setIsAlterViewAs(boolean isAlterViewAs) {
     this.isAlterViewAs = isAlterViewAs;
   }
+
+  public String getInputFormat() {
+    return inputFormat;
+  }
+
+  public void setInputFormat(String inputFormat) {
+    this.inputFormat = inputFormat;
+  }
+
+  public String getOutputFormat() {
+    return outputFormat;
+  }
+
+  public void setOutputFormat(String outputFormat) {
+    this.outputFormat = outputFormat;
+  }
+
+  public boolean isMaterialized() {
+    return isMaterialized;
+  }
+
+  public String getLocation() {
+    return location;
+  }
+
+  public String getSerde() {
+    return serde;
+  }
+
+  public String getStorageHandler() {
+    return storageHandler;
+  }
+
+  public Map<String, String> getSerdeProps() {
+    return serdeProps;
+  }
+
 }

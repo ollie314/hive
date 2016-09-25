@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.Context;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.AppMasterEventOperator;
 import org.apache.hadoop.hive.ql.exec.CommonMergeJoinOperator;
 import org.apache.hadoop.hive.ql.exec.ConditionalTask;
@@ -71,6 +72,7 @@ import org.apache.hadoop.hive.ql.optimizer.ReduceSinkMapJoinProc;
 import org.apache.hadoop.hive.ql.optimizer.RemoveDynamicPruningBySize;
 import org.apache.hadoop.hive.ql.optimizer.SetReducerParallelism;
 import org.apache.hadoop.hive.ql.optimizer.metainfo.annotation.AnnotateWithOpTraits;
+import org.apache.hadoop.hive.ql.optimizer.physical.AnnotateRunTimeStatsOptimizer;
 import org.apache.hadoop.hive.ql.optimizer.physical.CrossProductCheck;
 import org.apache.hadoop.hive.ql.optimizer.physical.LlapDecider;
 import org.apache.hadoop.hive.ql.optimizer.physical.MemoryDecider;
@@ -101,8 +103,8 @@ public class TezCompiler extends TaskCompiler {
   }
 
   @Override
-  public void init(HiveConf conf, LogHelper console, Hive db) {
-    super.init(conf, console, db);
+  public void init(QueryState queryState, LogHelper console, Hive db) {
+    super.init(queryState, console, db);
 
     // Tez requires us to use RPC for the query plan
     HiveConf.setBoolVar(conf, ConfVars.HIVE_RPC_QUERY_PLAN, true);
@@ -115,23 +117,28 @@ public class TezCompiler extends TaskCompiler {
   protected void optimizeOperatorPlan(ParseContext pCtx, Set<ReadEntity> inputs,
       Set<WriteEntity> outputs) throws SemanticException {
     PerfLogger perfLogger = SessionState.getPerfLogger();
-    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.OPTIMIZER);
     // Create the context for the walker
     OptimizeTezProcContext procCtx = new OptimizeTezProcContext(conf, pCtx, inputs, outputs);
-
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     // setup dynamic partition pruning where possible
     runDynamicPartitionPruning(procCtx, inputs, outputs);
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "Setup dynamic partition pruning");
 
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     // setup stats in the operator plan
     runStatsAnnotation(procCtx);
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "Setup stats in the operator plan");
 
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     // run the optimizations that use stats for optimization
     runStatsDependentOptimizations(procCtx, inputs, outputs);
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "Run the optimizations that use stats for optimization");
 
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     // after the stats phase we might have some cyclic dependencies that we need
     // to take care of.
     runCycleAnalysisForPartitionPruning(procCtx, inputs, outputs);
-    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.OPTIMIZER, "Tez compiler");
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "Run cycle analysis for partition pruning");
 
   }
 
@@ -323,7 +330,8 @@ public class TezCompiler extends TaskCompiler {
       List<Task<MoveWork>> mvTask, Set<ReadEntity> inputs, Set<WriteEntity> outputs)
       throws SemanticException {
 
-
+	PerfLogger perfLogger = SessionState.getPerfLogger();
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     ParseContext tempParseContext = getParseContext(pCtx, rootTasks);
     GenTezUtils utils = new GenTezUtils();
     GenTezWork genTezWork = new GenTezWork(utils);
@@ -373,9 +381,19 @@ public class TezCompiler extends TaskCompiler {
     GraphWalker ogw = new GenTezWorkWalker(disp, procCtx);
     ogw.startWalking(topNodes, null);
 
+    // we need to specify the reserved memory for each work that contains Map Join
+    for (List<BaseWork> baseWorkList : procCtx.mapJoinWorkMap.values()) {
+      for (BaseWork w : baseWorkList) {
+        // work should be the smallest unit for memory allocation
+        w.setReservedMemoryMB(
+            (int)(conf.getLongVar(ConfVars.HIVECONVERTJOINNOCONDITIONALTASKTHRESHOLD) / (1024 * 1024)));
+      }
+    }
+
     // we need to clone some operator plans and remove union operators still
+    int indexForTezUnion = 0;
     for (BaseWork w: procCtx.workWithUnionOperators) {
-      GenTezUtils.removeUnionOperators(procCtx, w);
+      GenTezUtils.removeUnionOperators(procCtx, w, indexForTezUnion++);
     }
 
     // then we make sure the file sink operators are set up right
@@ -389,6 +407,7 @@ public class TezCompiler extends TaskCompiler {
       LOG.debug("Handling AppMasterEventOperator: " + event);
       GenTezUtils.processAppMasterEvent(procCtx, event);
     }
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "generateTaskTree");
   }
 
   @Override
@@ -449,6 +468,8 @@ public class TezCompiler extends TaskCompiler {
   @Override
   protected void optimizeTaskPlan(List<Task<? extends Serializable>> rootTasks, ParseContext pCtx,
       Context ctx) throws SemanticException {
+    PerfLogger perfLogger = SessionState.getPerfLogger();
+    perfLogger.PerfLogBegin(this.getClass().getName(), PerfLogger.TEZ_COMPILER);
     PhysicalContext physicalCtx = new PhysicalContext(conf, pCtx, pCtx.getContext(), rootTasks,
        pCtx.getFetchTask());
 
@@ -470,7 +491,8 @@ public class TezCompiler extends TaskCompiler {
       LOG.debug("Skipping cross product analysis");
     }
 
-    if (conf.getBoolVar(HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)) {
+    if (conf.getBoolVar(HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)
+        && ctx.getExplainAnalyze() == null) {
       physicalCtx = new Vectorizer().resolve(physicalCtx);
     } else {
       LOG.debug("Skipping vectorization");
@@ -499,6 +521,11 @@ public class TezCompiler extends TaskCompiler {
     //  table scans or filters, you have to invoke it before this one.
     physicalCtx = new SerializeFilter().resolve(physicalCtx);
 
+    if (physicalCtx.getContext().getExplainAnalyze() != null) {
+      new AnnotateRunTimeStatsOptimizer().resolve(physicalCtx);
+    }
+
+    perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.TEZ_COMPILER, "optimizeTaskPlan");
     return;
   }
 }

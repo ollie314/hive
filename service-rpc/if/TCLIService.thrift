@@ -60,6 +60,9 @@ enum TProtocolVersion {
 
   // V8 adds support for interval types
   HIVE_CLI_SERVICE_PROTOCOL_V8
+
+  // V9 adds support for serializing ResultSets in SerDe
+  HIVE_CLI_SERVICE_PROTOCOL_V9
 }
 
 enum TTypeId {
@@ -402,6 +405,8 @@ struct TRowSet {
   1: required i64 startRowOffset
   2: required list<TRow> rows
   3: optional list<TColumn> columns
+  4: optional binary binaryColumns
+  5: optional i32 columnCount
 }
 
 // The return status code contained in each response.
@@ -456,6 +461,9 @@ enum TOperationState {
 
   // The operation is in an pending state
   PENDING_STATE,
+
+  // The operation is in an timedout state
+  TIMEDOUT_STATE,
 }
 
 // A string identifier. This is interpreted literally.
@@ -551,7 +559,7 @@ struct TOperationHandle {
 // which operations may be executed.
 struct TOpenSessionReq {
   // The version of the HiveServer2 protocol that the client is using.
-  1: required TProtocolVersion client_protocol = TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V8
+  1: required TProtocolVersion client_protocol = TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V9
 
   // Username and password for authentication.
   // Depending on the authentication scheme being used,
@@ -570,7 +578,7 @@ struct TOpenSessionResp {
   1: required TStatus status
 
   // The protocol version that the server is using.
-  2: required TProtocolVersion serverProtocolVersion = TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V8
+  2: required TProtocolVersion serverProtocolVersion = TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V9
 
   // Session Handle
   3: optional TSessionHandle sessionHandle
@@ -695,6 +703,9 @@ struct TExecuteStatementReq {
 
   // Execute asynchronously when runAsync is true
   4: optional bool runAsync = false
+
+  // The number of seconds after which the query will timeout on the server
+  5: optional i64 queryTimeout = 0
 }
 
 struct TExecuteStatementResp {
@@ -955,6 +966,52 @@ struct TGetFunctionsResp {
   2: optional TOperationHandle operationHandle
 }
 
+struct TGetPrimaryKeysReq {
+  // Session to run this request against
+  1: required TSessionHandle sessionHandle
+
+  // Name of the catalog.
+  2: optional TIdentifier catalogName
+
+  // Name of the schema.
+  3: optional TIdentifier schemaName
+
+  // Name of the table.
+  4: optional TIdentifier tableName
+}
+
+struct TGetPrimaryKeysResp {
+  1: required TStatus status
+  2: optional TOperationHandle operationHandle
+}
+
+struct TGetCrossReferenceReq {
+  // Session to run this request against
+  1: required TSessionHandle sessionHandle
+
+  // Name of the parent catalog.
+  2: optional TIdentifier parentCatalogName
+
+  // Name of the parent schema.
+  3: optional TIdentifier parentSchemaName
+
+  // Name of the parent table.
+  4: optional TIdentifier parentTableName
+
+  // Name of the foreign catalog.
+  5: optional TIdentifier foreignCatalogName
+
+  // Name of the foreign schema.
+  6: optional TIdentifier foreignSchemaName
+
+  // Name of the foreign table.
+  7: optional TIdentifier foreignTableName
+}
+
+struct TGetCrossReferenceResp {
+  1: required TStatus status
+  2: optional TOperationHandle operationHandle
+}
 
 // GetOperationStatus()
 //
@@ -983,8 +1040,12 @@ struct TGetOperationStatusResp {
 
   // When was the operation started
   7: optional i64 operationStarted
+
   // When was the operation completed
   8: optional i64 operationCompleted
+
+  // If the operation has the result
+  9: optional bool hasResultSet
 
 }
 
@@ -1164,6 +1225,10 @@ service TCLIService {
   TGetColumnsResp GetColumns(1:TGetColumnsReq req);
 
   TGetFunctionsResp GetFunctions(1:TGetFunctionsReq req);
+
+  TGetPrimaryKeysResp GetPrimaryKeys(1:TGetPrimaryKeysReq req);
+
+  TGetCrossReferenceResp GetCrossReference(1:TGetCrossReferenceReq req);
 
   TGetOperationStatusResp GetOperationStatus(1:TGetOperationStatusReq req);
 

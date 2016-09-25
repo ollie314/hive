@@ -1008,7 +1008,6 @@ public class GroupByOperator extends Operator<GroupByDesc> {
    * @throws HiveException
    */
   private void forward(Object[] keys, AggregationBuffer[] aggs) throws HiveException {
-
     if (forwardCache == null) {
       forwardCache = new Object[outputKeyLength + aggs.length];
     }
@@ -1102,6 +1101,8 @@ public class GroupByOperator extends Operator<GroupByDesc> {
         throw new HiveException(e);
       }
     }
+    hashAggregations = null;
+    super.closeOp(abort);
   }
 
   // Group by contains the columns needed - no need to aggregate from children

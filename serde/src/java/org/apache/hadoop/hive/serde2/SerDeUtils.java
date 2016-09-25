@@ -71,7 +71,8 @@ public final class SerDeUtils {
 
   // lower case null is used within json objects
   private static final String JSON_NULL = "null";
-
+  public static final String LIST_SINK_OUTPUT_FORMATTER = "list.sink.output.formatter";
+  public static final String LIST_SINK_OUTPUT_PROTOCOL = "list.sink.output.protocol";
   public static final Logger LOG = LoggerFactory.getLogger(SerDeUtils.class.getName());
 
   /**
@@ -565,5 +566,16 @@ public final class SerDeUtils {
 
   public static Text transformTextFromUTF8(Text text, Charset targetCharset) {
     return new Text(new String(text.getBytes(), 0, text.getLength()).getBytes(targetCharset));
+  }
+
+  public static void writeLong(byte[] writeBuffer, int offset, long value) {
+    writeBuffer[offset] = (byte) ((value >> 0)  & 0xff);
+    writeBuffer[offset + 1] = (byte) ((value >> 8)  & 0xff);
+    writeBuffer[offset + 2] = (byte) ((value >> 16) & 0xff);
+    writeBuffer[offset + 3] = (byte) ((value >> 24) & 0xff);
+    writeBuffer[offset + 4] = (byte) ((value >> 32) & 0xff);
+    writeBuffer[offset + 5] = (byte) ((value >> 40) & 0xff);
+    writeBuffer[offset + 6] = (byte) ((value >> 48) & 0xff);
+    writeBuffer[offset + 7] = (byte) ((value >> 56) & 0xff);
   }
 }

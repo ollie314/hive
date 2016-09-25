@@ -39,6 +39,7 @@ import java.util.List;
 
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hive.jdbc.Utils;
 import org.apache.hive.jdbc.miniHS2.MiniHS2;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -72,6 +73,7 @@ public class TestBeeLineWithArgs {
     HiveConf hiveConf = new HiveConf();
     // Set to non-zk lock manager to prevent HS2 from trying to connect
     hiveConf.setVar(HiveConf.ConfVars.HIVE_LOCK_MANAGER, "org.apache.hadoop.hive.ql.lockmgr.EmbeddedLockManager");
+    hiveConf.setBoolVar(HiveConf.ConfVars.HIVEOPTIMIZEMETADATAQUERIES, false);
     miniHS2 = new MiniHS2(hiveConf);
     miniHS2.start(new HashMap<String,  String>());
     createTable();
@@ -145,9 +147,9 @@ public class TestBeeLineWithArgs {
   }
 
   /**
-   * Attempt to execute a simple script file with the -f option to BeeLine
-   * Test for presence of an expected pattern
-   * in the output (stdout or stderr), fail if not found
+   * Attempt to execute a simple script file with the -f and -i option
+   * to BeeLine to test for presence of an expected pattern
+   * in the output (stdout or stderr), fail if not found.
    * Print PASSED or FAILED
    * @param expectedPattern Text to look for in command output/error
    * @param shouldMatch true if the pattern should be found, false if it should not
@@ -155,15 +157,33 @@ public class TestBeeLineWithArgs {
    */
   private void testScriptFile(String scriptText, String expectedPattern,
       boolean shouldMatch, List<String> argList) throws Throwable {
+    testScriptFile(scriptText, expectedPattern, shouldMatch, argList, true, true);
+  }
+
+  /**
+   * Attempt to execute a simple script file with the -f or -i option
+   * to BeeLine (or both) to  test for presence of an expected pattern
+   * in the output (stdout or stderr), fail if not found.
+   * Print PASSED or FAILED
+   * @param expectedPattern Text to look for in command output/error
+   * @param shouldMatch true if the pattern should be found, false if it should not
+   * @param testScript Whether we should test -f
+   * @param testInit Whether we should test -i
+   * @throws Exception on command execution error
+   */
+  private void testScriptFile(String scriptText, String expectedPattern,
+      boolean shouldMatch, List<String> argList,
+      boolean testScript, boolean testInit) throws Throwable {
 
     // Put the script content in a temp file
     File scriptFile = File.createTempFile(this.getClass().getSimpleName(), "temp");
+    System.out.println("script file is " + scriptFile.getAbsolutePath());
     scriptFile.deleteOnExit();
     PrintStream os = new PrintStream(new FileOutputStream(scriptFile));
     os.print(scriptText);
     os.close();
 
-    {
+    if (testScript) {
       List<String> copy = new ArrayList<String>(argList);
       copy.add("-f");
       copy.add(scriptFile.getAbsolutePath());
@@ -177,7 +197,10 @@ public class TestBeeLineWithArgs {
       }
     }
 
-    {
+    // Not all scripts can be used as init scripts, so we parameterize.
+    // (scripts that test !connect, for eg., since -i runs after connects)
+    // So, we keep this optional. Most tests should leave this as true, however.
+    if (testInit) {
       List<String> copy = new ArrayList<String>(argList);
       copy.add("-i");
       copy.add(scriptFile.getAbsolutePath());
@@ -255,7 +278,7 @@ public class TestBeeLineWithArgs {
     List<String> argList = getBaseArgs(miniHS2.getBaseJdbcURL());
     testScriptFile( SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
   }
-  
+
   /**
    * Test Beeline -hivevar option. User can specify --hivevar name=value on Beeline command line.
    * In the script, user should be able to use it in the form of ${name}, which will be substituted with
@@ -635,7 +658,7 @@ public class TestBeeLineWithArgs {
 
   @Test
   public void testEmbeddedBeelineConnection() throws Throwable{
-    String embeddedJdbcURL = BeeLine.BEELINE_DEFAULT_JDBC_URL+"/Default";
+    String embeddedJdbcURL = Utils.URL_PREFIX+"/Default";
     List<String> argList = getBaseArgs(embeddedJdbcURL);
 	  argList.add("--hivevar");
     argList.add("DUMMY_TBL=embedded_table");
@@ -750,13 +773,13 @@ public class TestBeeLineWithArgs {
 
   @Test
   public void testEmbeddedBeelineOutputs() throws Throwable{
-    String embeddedJdbcURL = BeeLine.BEELINE_DEFAULT_JDBC_URL+"/Default";
+    String embeddedJdbcURL = Utils.URL_PREFIX+"/Default";
     List<String> argList = getBaseArgs(embeddedJdbcURL);
     // Set to non-zk lock manager to avoid trying to connect to zookeeper
-    final String SCRIPT_TEXT =
-        "set hive.lock.manager=org.apache.hadoop.hive.ql.lockmgr.EmbeddedLockManager;\n" +
-        "create table if not exists embeddedBeelineOutputs(d int);\n" +
-        "set a=1;\nselect count(*) from embeddedBeelineOutputs;\n";
+    final String SCRIPT_TEXT = "set hive.lock.manager=org.apache.hadoop.hive.ql.lockmgr.EmbeddedLockManager;\n"
+        + "set hive.compute.query.using.stats=false;\n"
+        + "create table if not exists embeddedBeelineOutputs(d int);\n"
+        + "set a=1;\nselect count(*) from embeddedBeelineOutputs;\n";
     final String EXPECTED_PATTERN = "Stage-1 map =";
     testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
   }
@@ -767,5 +790,125 @@ public class TestBeeLineWithArgs {
     final String SCRIPT_TEXT = "set var1";
     final String EXPECTED_PATTERN = "var1=value1";
     testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
+  }
+
+  /**
+   * Test Beeline !connect with beeline saved vars
+   * @throws Throwable
+   */
+  @Test
+  public void testBeelineConnectEnvVar() throws Throwable {
+    final String jdbcUrl = miniHS2.getBaseJdbcURL();
+    List<String> argList = new ArrayList<String>();
+    argList.add("-u");
+    argList.add("blue");
+    argList.add("-d");
+    argList.add(BeeLine.BEELINE_DEFAULT_JDBC_DRIVER);
+
+    final String SCRIPT_TEXT =
+        "create table blueconnecttest (d int);\nshow tables;\n";
+    final String EXPECTED_PATTERN = "blueconnecttest";
+
+    // We go through these hijinxes because java considers System.getEnv
+    // to be read-only, and offers no way to set an env var from within
+    // a process, only for processes that we sub-spawn.
+
+    final BeeLineOpts.Env baseEnv = BeeLineOpts.getEnv();
+    BeeLineOpts.Env newEnv = new BeeLineOpts.Env() {
+      @Override
+      public String get(String envVar) {
+        if (envVar.equalsIgnoreCase("BEELINE_URL_BLUE")){
+          return jdbcUrl;
+        } else {
+          return baseEnv.get(envVar);
+        }
+      }
+    };
+    BeeLineOpts.setEnv(newEnv);
+
+    testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList, true, false);
+  }
+
+  /**
+   * Test that if we !close, we can still !reconnect
+   * @throws Throwable
+   */
+  @Test
+  public void testBeelineReconnect() throws  Throwable {
+    List<String> argList = getBaseArgs(miniHS2.getBaseJdbcURL());
+    final String SCRIPT_TEXT =
+        "!close\n" +
+        "!reconnect\n\n\n" +
+        "create table reconnecttest (d int);\nshow tables;\n";
+    final String EXPECTED_PATTERN = "reconnecttest";
+
+    testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList, true, false);
+
+  }
+
+  /**
+   * Attempt to execute a simple script file with the usage of user & password variables in URL.
+   * Test for presence of an expected pattern
+   * in the output (stdout or stderr), fail if not found
+   * Print PASSED or FAILED
+   */
+  @Test
+  public void testConnectionWithURLParams() throws Throwable {
+    final String EXPECTED_PATTERN = " hivetest ";
+    List<String> argList = new ArrayList<String>();
+    argList.add("-d");
+    argList.add(BeeLine.BEELINE_DEFAULT_JDBC_DRIVER);
+    argList.add("-u");
+    argList.add(miniHS2.getBaseJdbcURL() + ";user=hivetest;password=hive");
+    String SCRIPT_TEXT = "select current_user();";
+
+    testScriptFile( SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
+  }
+
+  /**
+   * Test that Beeline queries don't treat semicolons inside quotations as query-ending characters.
+   */
+  @Test
+  public void testQueryNonEscapedSemiColon() throws Throwable {
+    String SCRIPT_TEXT = "drop table if exists nonEscapedSemiColon;create table nonEscapedSemiColon "
+            + "(key int) ROW FORMAT DELIMITED FIELDS TERMINATED BY ';';show tables;";
+    final String EXPECTED_PATTERN = " nonEscapedSemiColon ";
+    List<String> argList = getBaseArgs(miniHS2.getBaseJdbcURL());
+    testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
+  }
+
+  @Test
+  public void testSelectQueryWithNonEscapedSemiColon() throws Throwable {
+    String SCRIPT_TEXT = "select ';', \"';'\", '\";\"', '\\';', ';\\'', '\\\";', ';\\\"' from " + tableName + ";";
+    final String EXPECTED_PATTERN = ";\t';'\t\";\"\t';\t;'\t\";\t;\"";
+    List<String> argList = getBaseArgs(miniHS2.getBaseJdbcURL());
+    argList.add("--outputformat=tsv2");
+    testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
+  }
+
+  /**
+   * Attempt to execute a simple script file with the usage of user & password variables in URL.
+   * Test for presence of an expected pattern
+   * in the output (stdout or stderr), fail if not found
+   * Print PASSED or FAILED
+   */
+  @Test
+  public void testShowDbInPrompt() throws Throwable {
+    final String EXPECTED_PATTERN = " (default)>";
+    List<String> argList = new ArrayList<String>();
+    argList.add("--showDbInPrompt");
+    argList.add("-u");
+    argList.add(miniHS2.getBaseJdbcURL() + ";user=hivetest;password=hive");
+    String SCRIPT_TEXT = "select current_user();";
+
+    testScriptFile( SCRIPT_TEXT, EXPECTED_PATTERN, true, argList);
+  }
+
+  @Test
+  public void testBeelineShellCommandWithoutConn() throws Throwable {
+    List<String> argList = new ArrayList<String>();
+    final String SCRIPT_TEXT = "!sh echo hello world";
+    final String EXPECTED_PATTERN = "hello world";
+    testScriptFile(SCRIPT_TEXT, EXPECTED_PATTERN, true, argList,true,false);
   }
 }

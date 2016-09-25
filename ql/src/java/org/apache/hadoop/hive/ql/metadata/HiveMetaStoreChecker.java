@@ -21,10 +21,20 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 
+import com.google.common.collect.Sets;
+import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileStatus;
@@ -32,12 +42,17 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.ql.metadata.CheckResult.PartitionResult;
+import org.apache.hadoop.hive.ql.optimizer.ppr.PartitionPruner;
+import org.apache.hadoop.hive.ql.parse.PrunedPartitionList;
 import org.apache.thrift.TException;
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
  * Verify that the information in the metastore matches what is on the
@@ -100,10 +115,10 @@ public class HiveMetaStoreChecker {
         // check the specified partitions
         checkTable(dbName, tableName, partitions, result);
       }
-      Collections.sort(result.getPartitionsNotInMs());
-      Collections.sort(result.getPartitionsNotOnFs());
-      Collections.sort(result.getTablesNotInMs());
-      Collections.sort(result.getTablesNotOnFs());
+      LOG.info("Number of partitionsNotInMs=" + result.getPartitionsNotInMs()
+              + ", partitionsNotOnFs=" + result.getPartitionsNotOnFs()
+              + ", tablesNotInMs=" + result.getTablesNotInMs()
+              + ", tablesNotOnFs=" + result.getTablesNotOnFs());
     } catch (MetaException e) {
       throw new HiveException(e);
     } catch (TException e) {
@@ -196,8 +211,10 @@ public class HiveMetaStoreChecker {
 
     if (table.isPartitioned()) {
       if (partitions == null || partitions.isEmpty()) {
+        PrunedPartitionList prunedPartList =
+        PartitionPruner.prune(table, null, conf, toString(), null);
         // no partitions specified, let's get all
-        parts = hive.getPartitions(table);
+        parts.addAll(prunedPartList.getPartitions());
       } else {
         // we're interested in specific partitions,
         // don't check for any others
@@ -286,26 +303,33 @@ public class HiveMetaStoreChecker {
    *          Result object
    * @throws IOException
    *           Thrown if we fail at fetching listings from the fs.
+   * @throws HiveException 
    */
   void findUnknownPartitions(Table table, Set<Path> partPaths,
-      CheckResult result) throws IOException {
+      CheckResult result) throws IOException, HiveException {
 
     Path tablePath = table.getPath();
     // now check the table folder and see if we find anything
     // that isn't in the metastore
     Set<Path> allPartDirs = new HashSet<Path>();
-    getAllLeafDirs(tablePath, allPartDirs);
+    checkPartitionDirs(tablePath, allPartDirs, table.getPartCols().size());
     // don't want the table dir
     allPartDirs.remove(tablePath);
 
     // remove the partition paths we know about
     allPartDirs.removeAll(partPaths);
 
+    Set<String> partColNames = Sets.newHashSet();
+    for(FieldSchema fSchema : table.getPartCols()) {
+      partColNames.add(fSchema.getName());
+    }
+
     // we should now only have the unexpected folders left
     for (Path partPath : allPartDirs) {
       FileSystem fs = partPath.getFileSystem(conf);
       String partitionName = getPartitionName(fs.makeQualified(tablePath),
-          partPath);
+          partPath, partColNames);
+      LOG.debug("PartitionName: " + partitionName);
 
       if (partitionName != null) {
         PartitionResult pr = new PartitionResult();
@@ -315,6 +339,7 @@ public class HiveMetaStoreChecker {
         result.getPartitionsNotInMs().add(pr);
       }
     }
+    LOG.debug("Number of partitions not in metastore : " + result.getPartitionsNotInMs().size());
   }
 
   /**
@@ -324,58 +349,181 @@ public class HiveMetaStoreChecker {
    *          Path of the table.
    * @param partitionPath
    *          Path of the partition.
+   * @param partCols
+   *          Set of partition columns from table definition
    * @return Partition name, for example partitiondate=2008-01-01
    */
-  private String getPartitionName(Path tablePath, Path partitionPath) {
+  static String getPartitionName(Path tablePath, Path partitionPath,
+      Set<String> partCols) {
     String result = null;
     Path currPath = partitionPath;
-    while (currPath != null && !tablePath.equals(currPath)) {
-      if (result == null) {
-        result = currPath.getName();
-      } else {
-        result = currPath.getName() + Path.SEPARATOR + result;
-      }
+    LOG.debug("tablePath:" + tablePath + ", partCols: " + partCols);
 
+    while (currPath != null && !tablePath.equals(currPath)) {
+      // format: partition=p_val
+      // Add only when table partition colName matches
+      String[] parts = currPath.getName().split("=");
+      if (parts != null && parts.length > 0) {
+        if (parts.length != 2) {
+          LOG.warn(currPath.getName() + " is not a valid partition name");
+          return result;
+        }
+
+        String partitionName = parts[0];
+        if (partCols.contains(partitionName)) {
+          if (result == null) {
+            result = currPath.getName();
+          } else {
+            result = currPath.getName() + Path.SEPARATOR + result;
+          }
+        }
+      }
       currPath = currPath.getParent();
+      LOG.debug("currPath=" + currPath);
     }
     return result;
   }
 
   /**
-   * Recursive method to get the leaf directories of a base path. Example:
-   * base/dir1/dir2 base/dir3
-   *
-   * This will return dir2 and dir3 but not dir1.
+   * Assume that depth is 2, i.e., partition columns are a and b
+   * tblPath/a=1  => throw exception
+   * tblPath/a=1/file => throw exception
+   * tblPath/a=1/b=2/file => return a=1/b=2
+   * tblPath/a=1/b=2/c=3 => return a=1/b=2
+   * tblPath/a=1/b=2/c=3/file => return a=1/b=2
    *
    * @param basePath
    *          Start directory
    * @param allDirs
    *          This set will contain the leaf paths at the end.
+   * @param maxDepth
+   *          Specify how deep the search goes.
    * @throws IOException
    *           Thrown if we can't get lists from the fs.
+   * @throws HiveException 
    */
 
-  private void getAllLeafDirs(Path basePath, Set<Path> allDirs)
-      throws IOException {
-    getAllLeafDirs(basePath, allDirs, basePath.getFileSystem(conf));
+  private void checkPartitionDirs(Path basePath, Set<Path> allDirs, int maxDepth) throws IOException, HiveException {
+    ConcurrentLinkedQueue<Path> basePaths = new ConcurrentLinkedQueue<>();
+    basePaths.add(basePath);
+    Set<Path> dirSet = Collections.newSetFromMap(new ConcurrentHashMap<Path, Boolean>());    
+    // Here we just reuse the THREAD_COUNT configuration for
+    // HIVE_MOVE_FILES_THREAD_COUNT
+    final ExecutorService pool = conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25) > 0 ? Executors
+        .newFixedThreadPool(conf.getInt(ConfVars.HIVE_MOVE_FILES_THREAD_COUNT.varname, 25),
+            new ThreadFactoryBuilder().setDaemon(true).setNameFormat("MSCK-GetPaths-%d").build())
+            : null;
+    if (pool == null) {
+      LOG.debug("Not-using threaded version of MSCK-GetPaths");
+    } else {
+      LOG.debug("Using threaded version of MSCK-GetPaths with number of threads "
+          + ((ThreadPoolExecutor) pool).getPoolSize());
+    }
+    checkPartitionDirs(pool, basePaths, dirSet, basePath.getFileSystem(conf), maxDepth, maxDepth);
+    pool.shutdown();
+    allDirs.addAll(dirSet);
   }
 
-  private void getAllLeafDirs(Path basePath, Set<Path> allDirs, FileSystem fs)
-      throws IOException {
-
-    FileStatus[] statuses = fs.listStatus(basePath, FileUtils.HIDDEN_FILES_PATH_FILTER);
-    boolean directoryFound=false;
-
-    for (FileStatus status : statuses) {
-      if (status.isDir()) {
-        directoryFound = true;
-        getAllLeafDirs(status.getPath(), allDirs, fs);
+  // process the basePaths in parallel and then the next level of basePaths
+  private void checkPartitionDirs(final ExecutorService pool,
+      final ConcurrentLinkedQueue<Path> basePaths, final Set<Path> allDirs,
+      final FileSystem fs, final int depth, final int maxDepth) throws IOException, HiveException {
+    final ConcurrentLinkedQueue<Path> nextLevel = new ConcurrentLinkedQueue<>();
+    if (null == pool) {
+      for (final Path path : basePaths) {
+        FileStatus[] statuses = fs.listStatus(path, FileUtils.HIDDEN_FILES_PATH_FILTER);
+        boolean fileFound = false;
+        for (FileStatus status : statuses) {
+          if (status.isDirectory()) {
+            nextLevel.add(status.getPath());
+          } else {
+            fileFound = true;
+          }
+        }
+        if (depth != 0) {
+          // we are in the middle of the search and we find a file
+          if (fileFound) {
+            if ("throw".equals(HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_MSCK_PATH_VALIDATION))) {
+              throw new HiveException(
+                  "MSCK finds a file rather than a folder when it searches for " + path.toString());
+            } else {
+              LOG.warn("MSCK finds a file rather than a folder when it searches for "
+                  + path.toString());
+            }
+          }
+          if (!nextLevel.isEmpty()) {
+            checkPartitionDirs(pool, nextLevel, allDirs, fs, depth - 1, maxDepth);
+          } else if (depth != maxDepth) {
+            // since nextLevel is empty, we are missing partition columns.
+            if ("throw".equals(HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_MSCK_PATH_VALIDATION))) {
+              throw new HiveException("MSCK is missing partition columns under " + path.toString());
+            } else {
+              LOG.warn("MSCK is missing partition columns under " + path.toString());
+            }
+          }
+        } else {
+          allDirs.add(path);
+        }
+      }
+    } else {
+      final List<Future<Void>> futures = new LinkedList<>();
+      for (final Path path : basePaths) {
+        futures.add(pool.submit(new Callable<Void>() {
+          @Override
+          public Void call() throws Exception {
+            FileStatus[] statuses = fs.listStatus(path, FileUtils.HIDDEN_FILES_PATH_FILTER);
+            boolean fileFound = false;
+            for (FileStatus status : statuses) {
+              if (status.isDirectory()) {
+                nextLevel.add(status.getPath());
+              } else {
+                fileFound = true;
+              }
+            }
+            if (depth != 0) {
+              // we are in the middle of the search and we find a file
+              if (fileFound) {
+                if ("throw".equals(HiveConf.getVar(conf,
+                    HiveConf.ConfVars.HIVE_MSCK_PATH_VALIDATION))) {
+                  throw new HiveException(
+                      "MSCK finds a file rather than a folder when it searches for "
+                          + path.toString());
+                } else {
+                  LOG.warn("MSCK finds a file rather than a folder when it searches for "
+                      + path.toString());
+                }
+              }
+              if (!nextLevel.isEmpty()) {
+                checkPartitionDirs(pool, nextLevel, allDirs, fs, depth - 1, maxDepth);
+              } else if (depth != maxDepth) {
+                // since nextLevel is empty, we are missing partition columns.
+                if ("throw".equals(HiveConf.getVar(conf,
+                    HiveConf.ConfVars.HIVE_MSCK_PATH_VALIDATION))) {
+                  throw new HiveException("MSCK is missing partition columns under "
+                      + path.toString());
+                } else {
+                  LOG.warn("MSCK is missing partition columns under " + path.toString());
+                }
+              }
+            } else {
+              allDirs.add(path);
+            }
+            return null;
+          }
+        }));
+      }
+      for (Future<Void> future : futures) {
+        try {
+          future.get();
+        } catch (Exception e) {
+          LOG.error(e.getMessage());
+          pool.shutdownNow();
+          throw new HiveException(e.getCause());
+        }
+      }
+      if (!nextLevel.isEmpty() && depth != 0) {
+        checkPartitionDirs(pool, nextLevel, allDirs, fs, depth - 1, maxDepth);
       }
     }
-
-    if(!directoryFound){
-      allDirs.add(basePath);
-    }
   }
-
 }

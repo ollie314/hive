@@ -49,6 +49,9 @@ public class TestMetaStoreMetrics {
     hiveConf.setIntVar(HiveConf.ConfVars.METASTORETHRIFTCONNECTIONRETRIES, 3);
     hiveConf.setBoolVar(HiveConf.ConfVars.METASTORE_METRICS, true);
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
+    hiveConf
+        .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
+            "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
 
     MetricsFactory.close();
     MetricsFactory.init(hiveConf);
@@ -140,23 +143,24 @@ public class TestMetaStoreMetrics {
 
     //initial state is one connection
     String json = metrics.dumpJson();
-    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, 1);
+    int initialCount = (new Integer((MetricsTestUtils.getJsonNode(json, MetricsTestUtils.COUNTER,
+                                       MetricsConstant.OPEN_CONNECTIONS)).asText())).intValue();
 
     //create two connections
     HiveMetaStoreClient msc = new HiveMetaStoreClient(hiveConf);
     HiveMetaStoreClient msc2 = new HiveMetaStoreClient(hiveConf);
 
     json = metrics.dumpJson();
-    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, 3);
+    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, initialCount + 2);
 
     //close one connection, verify still two left
     msc.close();
     json = metrics.dumpJson();
-    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, 2);
+    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, initialCount + 1);
 
     //close one connection, verify still one left
     msc2.close();
     json = metrics.dumpJson();
-    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, 1);
+    MetricsTestUtils.verifyMetricsJson(json, MetricsTestUtils.COUNTER, MetricsConstant.OPEN_CONNECTIONS, initialCount);
   }
 }

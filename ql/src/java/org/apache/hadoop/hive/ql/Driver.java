@@ -39,6 +39,9 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.hive.common.ValidTxnList;
+import org.apache.hadoop.hive.common.metrics.common.Metrics;
+import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
+import org.apache.hadoop.hive.common.metrics.common.MetricsFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.conf.HiveVariableSource;
@@ -63,6 +66,9 @@ import org.apache.hadoop.hive.ql.hooks.HookContext;
 import org.apache.hadoop.hive.ql.hooks.HookUtils;
 import org.apache.hadoop.hive.ql.hooks.PostExecute;
 import org.apache.hadoop.hive.ql.hooks.PreExecute;
+import org.apache.hadoop.hive.ql.hooks.QueryLifeTimeHook;
+import org.apache.hadoop.hive.ql.hooks.QueryLifeTimeHookContext;
+import org.apache.hadoop.hive.ql.hooks.QueryLifeTimeHookContextImpl;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
 import org.apache.hadoop.hive.ql.lockmgr.HiveLock;
@@ -81,6 +87,7 @@ import org.apache.hadoop.hive.ql.optimizer.ppr.PartitionPruner;
 import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.parse.ColumnAccessInfo;
+import org.apache.hadoop.hive.ql.parse.ExplainSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHook;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHookContext;
 import org.apache.hadoop.hive.ql.parse.HiveSemanticAnalyzerHookContextImpl;
@@ -91,6 +98,7 @@ import org.apache.hadoop.hive.ql.parse.ParseUtils;
 import org.apache.hadoop.hive.ql.parse.PrunedPartitionList;
 import org.apache.hadoop.hive.ql.parse.SemanticAnalyzer;
 import org.apache.hadoop.hive.ql.parse.SemanticAnalyzerFactory;
+import org.apache.hadoop.hive.ql.parse.ExplainConfiguration.AnalyzeState;
 import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
@@ -102,12 +110,13 @@ import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveOperationType
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivObjectActionType;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivilegeObjectType;
-import org.apache.hadoop.hive.ql.security.authorization.plugin.QueryContext;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzContext;
 import org.apache.hadoop.hive.ql.session.OperationLog;
 import org.apache.hadoop.hive.ql.session.OperationLog.LoggingLevel;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.serde2.ByteStream;
+import org.apache.hadoop.hive.serde2.thrift.ThriftJDBCBinarySerDe;
 import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hadoop.mapred.ClusterStatus;
 import org.apache.hadoop.mapred.JobClient;
@@ -117,6 +126,7 @@ import org.apache.hive.common.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 
@@ -163,6 +173,12 @@ public class Driver implements CommandProcessor {
 
   // For WebUI.  Kept alive after queryPlan is freed.
   private final QueryDisplay queryDisplay = new QueryDisplay();
+
+  // Query specific info
+  private QueryState queryState;
+
+  // Query hooks that execute before compilation and after execution
+  List<QueryLifeTimeHook> queryHooks;
 
   private boolean checkConcurrency() {
     boolean supportConcurrency = conf.getBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY);
@@ -289,22 +305,30 @@ public class Driver implements CommandProcessor {
     this.maxRows = maxRows;
   }
 
-  /**
-   * for backwards compatibility with current tests
-   */
+  public Driver() {
+    this(new QueryState((SessionState.get() != null) ?
+        SessionState.get().getConf() : new HiveConf()), null);
+  }
+
   public Driver(HiveConf conf) {
-    this.conf = conf;
-    isParallelEnabled = (conf != null)
-        && HiveConf.getBoolVar(conf, ConfVars.HIVE_SERVER2_PARALLEL_COMPILATION);
+    this(new QueryState(conf), null);
+  }
+
+  public Driver(HiveConf conf, Context ctx) {
+    this(new QueryState(conf), null);
+    this.ctx = ctx;
   }
 
   public Driver(HiveConf conf, String userName) {
-    this(conf);
-    this.userName = userName;
+    this(new QueryState(conf), userName);
   }
 
-  public Driver() {
-    this((SessionState.get() != null) ? SessionState.get().getConf() : null);
+  public Driver(QueryState queryState, String userName) {
+    this.queryState = queryState;
+    this.conf = queryState.getConf();
+    isParallelEnabled = (conf != null)
+        && HiveConf.getBoolVar(conf, ConfVars.HIVE_SERVER2_PARALLEL_COMPILATION);
+    this.userName = userName;
   }
 
   /**
@@ -319,52 +343,6 @@ public class Driver implements CommandProcessor {
   }
 
   /**
-   * Hold state variables specific to each query being executed, that may not
-   * be consistent in the overall SessionState
-   */
-  private static class QueryState {
-    private HiveOperation op;
-    private String cmd;
-    private boolean init = false;
-
-    /**
-     * Initialize the queryState with the query state variables
-     */
-    public void init(HiveOperation op, String cmd) {
-      this.op = op;
-      this.cmd = cmd;
-      this.init = true;
-    }
-
-    public boolean isInitialized() {
-      return this.init;
-    }
-
-    public HiveOperation getOp() {
-      return this.op;
-    }
-
-    public String getCmd() {
-      return this.cmd;
-    }
-  }
-
-  public void saveSession(QueryState qs) {
-    SessionState oldss = SessionState.get();
-    if (oldss != null && oldss.getHiveOperation() != null) {
-      qs.init(oldss.getHiveOperation(), oldss.getCmd());
-    }
-  }
-
-  public void restoreSession(QueryState qs) {
-    SessionState ss = SessionState.get();
-    if (ss != null && qs != null && qs.isInitialized()) {
-      ss.setCmd(qs.getCmd());
-      ss.setCommandType(qs.getOp());
-    }
-  }
-
-  /**
    * Compile a new query, but potentially reset taskID counter.  Not resetting task counter
    * is useful for generating re-entrant QL queries.
    * @param command  The HiveQL query to compile
@@ -372,7 +350,8 @@ public class Driver implements CommandProcessor {
    * @return 0 for ok
    */
   public int compile(String command, boolean resetTaskIds) {
-    PerfLogger perfLogger = SessionState.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger(true);
+    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DRIVER_RUN);
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.COMPILE);
 
     command = new VariableSubstitution(new HiveVariableSource() {
@@ -391,17 +370,13 @@ public class Driver implements CommandProcessor {
       LOG.warn("WARNING! Query command could not be redacted." + e);
     }
 
-    //holder for parent command type/string when executing reentrant queries
-    QueryState queryState = new QueryState();
-
-    if (ctx != null) {
+    if (ctx != null && ctx.getExplainAnalyze() != AnalyzeState.RUNNING) {
       close();
     }
 
     if (resetTaskIds) {
       TaskFactory.resetId();
     }
-    saveSession(queryState);
 
     String queryId = conf.getVar(HiveConf.ConfVars.HIVEQUERYID);
 
@@ -412,6 +387,9 @@ public class Driver implements CommandProcessor {
     LOG.info("Compiling command(queryId=" + queryId + "): " + queryStr);
 
     SessionState.get().setupQueryCurrentTimestamp();
+
+    // Whether any error occurred during query compilation. Used for query lifetime hook.
+    boolean compileError = false;
 
     try {
       // Initialize the transaction manager.  This must be done before analyze is called.
@@ -433,7 +411,9 @@ public class Driver implements CommandProcessor {
       };
       ShutdownHookManager.addShutdownHook(shutdownRunner, SHUTDOWN_HOOK_PRIORITY);
 
-      ctx = new Context(conf);
+      if (ctx == null) {
+        ctx = new Context(conf);
+      }
       ctx.setTryCount(getTryCount());
       ctx.setCmd(command);
       ctx.setHDFSCleanup(true);
@@ -444,9 +424,20 @@ public class Driver implements CommandProcessor {
       tree = ParseUtils.findRootNonNullToken(tree);
       perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.PARSE);
 
+      // Trigger query hook before compilation
+      queryHooks = getHooks(ConfVars.HIVE_QUERY_LIFETIME_HOOKS, QueryLifeTimeHook.class);
+      if (queryHooks != null && !queryHooks.isEmpty()) {
+        QueryLifeTimeHookContext qhc = new QueryLifeTimeHookContextImpl();
+        qhc.setHiveConf(conf);
+        qhc.setCommand(command);
+
+        for (QueryLifeTimeHook hook : queryHooks) {
+          hook.beforeCompile(qhc);
+        }
+      }
 
       perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.ANALYZE);
-      BaseSemanticAnalyzer sem = SemanticAnalyzerFactory.get(conf, tree);
+      BaseSemanticAnalyzer sem = SemanticAnalyzerFactory.get(queryState, tree);
       List<HiveSemanticAnalyzerHook> saHooks =
           getHooks(HiveConf.ConfVars.SEMANTIC_ANALYZER_HOOK,
               HiveSemanticAnalyzerHook.class);
@@ -490,7 +481,7 @@ public class Driver implements CommandProcessor {
       schema = getSchema(sem, conf);
 
       plan = new QueryPlan(queryStr, sem, perfLogger.getStartTime(PerfLogger.DRIVER_RUN), queryId,
-        SessionState.get().getHiveOperation(), schema, queryDisplay);
+        queryState.getHiveOperation(), schema);
 
       conf.setQueryString(queryStr);
 
@@ -499,7 +490,7 @@ public class Driver implements CommandProcessor {
 
       // initialize FetchTask right here
       if (plan.getFetchTask() != null) {
-        plan.getFetchTask().initialize(conf, plan, null, ctx.getOpContext());
+        plan.getFetchTask().initialize(queryState, plan, null, ctx.getOpContext());
       }
 
       //do the authorization check
@@ -508,7 +499,7 @@ public class Driver implements CommandProcessor {
 
         try {
           perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DO_AUTHORIZATION);
-          doAuthorization(sem, command);
+          doAuthorization(queryState.getHiveOperation(), sem, command);
         } catch (AuthorizationException authExp) {
           console.printError("Authorization failed:" + authExp.getMessage()
               + ". Use SHOW GRANT to get more details.");
@@ -532,8 +523,11 @@ public class Driver implements CommandProcessor {
           }
         }
       }
+
       return 0;
     } catch (Exception e) {
+      compileError = true;
+
       ErrorMsg error = ErrorMsg.getErrorMsg(e.getMessage());
       errorMessage = "FAILED: " + e.getClass().getSimpleName();
       if (error != ErrorMsg.GENERIC_ERROR) {
@@ -558,10 +552,22 @@ public class Driver implements CommandProcessor {
       return error.getErrorCode();//todo: this is bad if returned as cmd shell exit
       // since it exceeds valid range of shell return values
     } finally {
+
+      // Trigger post compilation hook. Note that if the compilation fails here then
+      // before/after execution hook will never be executed.
+      if (queryHooks != null && !queryHooks.isEmpty()) {
+        QueryLifeTimeHookContext qhc = new QueryLifeTimeHookContextImpl();
+        qhc.setHiveConf(conf);
+        qhc.setCommand(command);
+
+        for (QueryLifeTimeHook hook : queryHooks) {
+          hook.afterCompile(qhc, compileError);
+        }
+      }
+
       double duration = perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.COMPILE)/1000.00;
       ImmutableMap<String, Long> compileHMSTimings = dumpMetaCallTimingWithoutEx("compilation");
       queryDisplay.setHmsTimings(QueryDisplay.Phase.COMPILATION, compileHMSTimings);
-      restoreSession(queryState);
       LOG.info("Completed compiling command(queryId=" + queryId + "); Time taken: " + duration + " seconds");
     }
   }
@@ -588,12 +594,12 @@ public class Driver implements CommandProcessor {
       ASTNode astTree) throws IOException {
     String ret = null;
     ExplainTask task = new ExplainTask();
-    task.initialize(conf, plan, null, ctx.getOpContext());
+    task.initialize(queryState, plan, null, ctx.getOpContext());
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     PrintStream ps = new PrintStream(baos);
     try {
       List<Task<?>> rootTasks = sem.getAllRootTasks();
-      task.getJSONPlan(ps, astTree, rootTasks, sem.getFetchTask(), false, true, true);
+      task.getJSONPlan(ps, rootTasks, sem.getFetchTask(), false, true, true);
       ret = baos.toString();
     } catch (Exception e) {
       LOG.warn("Exception generating explain output: " + e, e);
@@ -611,10 +617,9 @@ public class Driver implements CommandProcessor {
    * @throws HiveException
    * @throws AuthorizationException
    */
-  public static void doAuthorization(BaseSemanticAnalyzer sem, String command)
+  public static void doAuthorization(HiveOperation op, BaseSemanticAnalyzer sem, String command)
       throws HiveException, AuthorizationException {
     SessionState ss = SessionState.get();
-    HiveOperation op = ss.getHiveOperation();
     Hive db = sem.getDb();
 
     Set<ReadEntity> additionalInputs = new HashSet<ReadEntity>();
@@ -625,12 +630,17 @@ public class Driver implements CommandProcessor {
     }
 
     Set<WriteEntity> additionalOutputs = new HashSet<WriteEntity>();
-    for (Entity e : sem.getOutputs()) {
+    for (WriteEntity e : sem.getOutputs()) {
       if (e.getType() == Entity.Type.PARTITION) {
-        additionalOutputs.add(new WriteEntity(e.getTable(), WriteEntity.WriteType.DDL_NO_LOCK));
+        additionalOutputs.add(new WriteEntity(e.getTable(), e.getWriteType()));
       }
     }
 
+    // The following union operation returns a union, which traverses over the
+    // first set once and then  then over each element of second set, in order, 
+    // that is not contained in first. This means it doesn't replace anything
+    // in first set, and would preserve the WriteType in WriteEntity in first
+    // set in case of outputs list.
     Set<ReadEntity> inputs = Sets.union(sem.getInputs(), additionalInputs);
     Set<WriteEntity> outputs = Sets.union(sem.getOutputs(), additionalOutputs);
 
@@ -743,7 +753,7 @@ public class Driver implements CommandProcessor {
         Table tbl = read.getTable();
         if (tbl.isView() && sem instanceof SemanticAnalyzer) {
           tab2Cols.put(tbl,
-              sem.getColumnAccessInfo().getTableToColumnAccessMap().get(tbl.getTableName()));
+              sem.getColumnAccessInfo().getTableToColumnAccessMap().get(tbl.getCompleteName()));
         }
         if (read.getPartition() != null) {
           Partition partition = read.getPartition();
@@ -846,7 +856,8 @@ public class Driver implements CommandProcessor {
     since the insert will get passed the columns from the select.
      */
 
-    QueryContext.Builder authzContextBuilder = new QueryContext.Builder();
+    HiveAuthzContext.Builder authzContextBuilder = new HiveAuthzContext.Builder();
+    authzContextBuilder.setUserIpAddress(ss.getUserIpAddress());
     authzContextBuilder.setForwardedAddresses(ss.getForwardedAddresses());
     authzContextBuilder.setCommandString(command);
 
@@ -932,6 +943,13 @@ public class Driver implements CommandProcessor {
     return plan;
   }
 
+  /**
+   * @return The current FetchTask associated with the Driver's plan, if any.
+   */
+  public FetchTask getFetchTask() {
+    return fetchTask;
+  }
+
   // Write the current set of valid transactions into the conf file so that it can be read by
   // the input format.
   private void recordValidTxns() throws LockException {
@@ -939,6 +957,14 @@ public class Driver implements CommandProcessor {
     ValidTxnList txns = txnMgr.getValidTxns();
     String txnStr = txns.toString();
     conf.set(ValidTxnList.VALID_TXNS_KEY, txnStr);
+    if(plan.getFetchTask() != null) {
+      /**
+       * This is needed for {@link HiveConf.ConfVars.HIVEFETCHTASKCONVERSION} optimization which
+       * initializes JobConf in FetchOperator before recordValidTxns() but this has to be done
+       * after locks are acquired to avoid race conditions in ACID.
+       */
+      plan.getFetchTask().setValidTxnList(txnStr);
+    }
     LOG.debug("Encoding valid txns info " + txnStr + " txnid:" + txnMgr.getCurrentTxnId());
   }
 
@@ -1181,6 +1207,17 @@ public class Driver implements CommandProcessor {
   private static final ReentrantLock globalCompileLock = new ReentrantLock();
   private int compileInternal(String command) {
     int ret;
+
+    Metrics metrics = MetricsFactory.getInstance();
+    if (metrics != null) {
+      try {
+        metrics.incrementCounter(MetricsConstant.WAITING_COMPILE_OPS, 1);
+      } catch (IOException e) {
+        // This won't happen if we are using the newer CodaHale metrics. Same for below.
+        LOG.warn("Error while incrementing metrics counter.", e);
+      }
+    }
+
     final ReentrantLock compileLock = tryAcquireCompileLock(isParallelEnabled,
       command);
     if (compileLock == null) {
@@ -1188,6 +1225,13 @@ public class Driver implements CommandProcessor {
     }
 
     try {
+      if (metrics != null) {
+        try {
+          metrics.decrementCounter(MetricsConstant.WAITING_COMPILE_OPS, 1);
+        } catch (IOException e) {
+          LOG.warn("Error while decrementing metrics counter.", e);
+        }
+      }
       ret = compile(command);
     } finally {
       compileLock.unlock();
@@ -1227,11 +1271,34 @@ public class Driver implements CommandProcessor {
     long maxCompileLockWaitTime = HiveConf.getTimeVar(
       this.conf, ConfVars.HIVE_SERVER2_COMPILE_LOCK_TIMEOUT,
       TimeUnit.SECONDS);
+
+    final String lockAcquiredMsg = "Acquired the compile lock.";
+    // First shot without waiting.
+    try {
+      if (compileLock.tryLock(0, TimeUnit.SECONDS)) {
+        LOG.debug(lockAcquiredMsg);
+        return compileLock;
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Interrupted Exception ignored", e);
+      }
+      return null;
+    }
+
+    // If the first shot fails, then we log the waiting messages.
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Waiting to acquire compile lock: " + command);
+    }
+
+    OperationLog ol = OperationLog.getCurrentOperationLog();
+    if (ol != null) {
+      ol.writeOperationLog(LoggingLevel.EXECUTION, "Waiting to acquire compile lock.\n");
+    }
+
     if (maxCompileLockWaitTime > 0) {
       try {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Waiting to acquire compile lock: " + command);
-        }
         if(!compileLock.tryLock(maxCompileLockWaitTime, TimeUnit.SECONDS)) {
           errorMessage = ErrorMsg.COMPILE_LOCK_TIMED_OUT.getErrorCodedMsg();
           LOG.error(errorMessage + ": " + command);
@@ -1248,7 +1315,10 @@ public class Driver implements CommandProcessor {
       compileLock.lock();
     }
 
-    LOG.debug("Acquired the compile lock");
+    LOG.debug(lockAcquiredMsg);
+    if (ol != null) {
+        ol.writeOperationLog(LoggingLevel.EXECUTION, lockAcquiredMsg + "\n");
+    }
     return compileLock;
   }
 
@@ -1258,7 +1328,8 @@ public class Driver implements CommandProcessor {
     SQLState = null;
     downstreamError = null;
 
-    HiveDriverRunHookContext hookContext = new HiveDriverRunHookContextImpl(conf, command);
+    HiveDriverRunHookContext hookContext = new HiveDriverRunHookContextImpl(conf,
+        alreadyCompiled ? ctx.getCmd() : command);
     // Get all the driver run hooks and pre-execute them.
     List<HiveDriverRunHook> driverRunHooks;
     try {
@@ -1276,18 +1347,20 @@ public class Driver implements CommandProcessor {
       return createProcessorResponse(12);
     }
 
-    // Reset the perf logger
-    PerfLogger perfLogger = SessionState.getPerfLogger(true);
-    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DRIVER_RUN);
-    perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TIME_TO_SUBMIT);
+    PerfLogger perfLogger = null;
 
     int ret;
     if (!alreadyCompiled) {
+      // compile internal will automatically reset the perf logger
       ret = compileInternal(command);
+      // then we continue to use this perf logger
+      perfLogger = SessionState.getPerfLogger();
       if (ret != 0) {
         return createProcessorResponse(ret);
       }
     } else {
+      // reuse existing perf logger.
+      perfLogger = SessionState.getPerfLogger();
       // Since we're reusing the compiled plan, we need to update its start time for current run
       plan.setQueryStartTime(perfLogger.getStartTime(PerfLogger.DRIVER_RUN));
     }
@@ -1506,6 +1579,9 @@ public class Driver implements CommandProcessor {
 
     HookContext hookContext = null;
 
+    // Whether there's any error occurred during query execution. Used for query lifetime hook.
+    boolean executionError = false;
+
     try {
       LOG.info("Executing command(queryId=" + queryId + "): " + queryStr);
       // compile and execute can get called from different threads in case of HS2
@@ -1522,7 +1598,7 @@ public class Driver implements CommandProcessor {
       resStream = null;
 
       SessionState ss = SessionState.get();
-      hookContext = new HookContext(plan, conf, ctx.getPathToCS(), ss.getUserName(),
+      hookContext = new HookContext(plan, queryState, ctx.getPathToCS(), ss.getUserName(),
           ss.getUserIpAddress(), operationId);
       hookContext.setHookType(HookContext.HookType.PRE_EXEC_HOOK);
 
@@ -1543,6 +1619,19 @@ public class Driver implements CommandProcessor {
         }
       }
 
+      // Trigger query hooks before query execution.
+      if (queryHooks != null && !queryHooks.isEmpty()) {
+        QueryLifeTimeHookContext qhc = new QueryLifeTimeHookContextImpl();
+        qhc.setHiveConf(conf);
+        qhc.setCommand(ctx.getCmd());
+        qhc.setHookContext(hookContext);
+
+        for (QueryLifeTimeHook hook : queryHooks) {
+          hook.beforeExecution(qhc);
+        }
+      }
+
+      setQueryDisplays(plan.getRootTasks());
       int mrJobs = Utilities.getMRTasks(plan.getRootTasks()).size();
       int jobs = mrJobs
         + Utilities.getTezTasks(plan.getRootTasks()).size()
@@ -1584,7 +1673,6 @@ public class Driver implements CommandProcessor {
         driverCxt.addToRunnable(tsk);
       }
 
-      perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TIME_TO_SUBMIT);
       perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.RUN_TASKS);
       // Loop while you either have tasks running, or tasks queued up
       while (!destroyed && driverCxt.isRunning()) {
@@ -1633,7 +1721,8 @@ public class Driver implements CommandProcessor {
 
           } else {
             setErrorMsgAndDetail(exitVal, result.getTaskError(), tsk);
-            invokeFailureHooks(perfLogger, hookContext);
+            invokeFailureHooks(perfLogger, hookContext,
+              errorMessage + Strings.nullToEmpty(tsk.getDiagnosticsMessage()), result.getTaskError());
             SQLState = "08S01";
             console.printError(errorMessage);
             driverCxt.shutdown();
@@ -1669,7 +1758,7 @@ public class Driver implements CommandProcessor {
       if (driverCxt.isShutdown()) {
         SQLState = "HY008";
         errorMessage = "FAILED: Operation cancelled";
-        invokeFailureHooks(perfLogger, hookContext);
+        invokeFailureHooks(perfLogger, hookContext, errorMessage, null);
         console.printError(errorMessage);
         return 1000;
       }
@@ -1708,15 +1797,16 @@ public class Driver implements CommandProcessor {
         }
       }
 
-
       if (SessionState.get() != null) {
         SessionState.get().getHiveHistory().setQueryProperty(queryId, Keys.QUERY_RET_CODE,
             String.valueOf(0));
         SessionState.get().getHiveHistory().printRowCount(queryId);
       }
     } catch (CommandNeedRetryException e) {
+      executionError = true;
       throw e;
     } catch (Exception e) {
+      executionError = true;
       ctx.restoreOriginalTracker();
       if (SessionState.get() != null) {
         SessionState.get().getHiveHistory().setQueryProperty(queryId, Keys.QUERY_RET_CODE,
@@ -1726,7 +1816,7 @@ public class Driver implements CommandProcessor {
       errorMessage = "FAILED: Hive Internal Error: " + Utilities.getNameMessage(e);
       if (hookContext != null) {
         try {
-          invokeFailureHooks(perfLogger, hookContext);
+          invokeFailureHooks(perfLogger, hookContext, errorMessage, e);
         } catch (Exception t) {
           LOG.warn("Failed to invoke failure hook", t);
         }
@@ -1737,6 +1827,18 @@ public class Driver implements CommandProcessor {
           + org.apache.hadoop.util.StringUtils.stringifyException(e));
       return (12);
     } finally {
+      // Trigger query hooks after query completes its execution.
+      if (queryHooks != null && !queryHooks.isEmpty()) {
+        QueryLifeTimeHookContext qhc = new QueryLifeTimeHookContextImpl();
+        qhc.setHiveConf(conf);
+        qhc.setCommand(ctx.getCmd());
+        qhc.setHookContext(hookContext);
+
+        for (QueryLifeTimeHook hook : queryHooks) {
+          hook.afterExecution(qhc, executionError);
+        }
+      }
+
       if (SessionState.get() != null) {
         SessionState.get().getHiveHistory().endQuery(queryId);
       }
@@ -1760,18 +1862,38 @@ public class Driver implements CommandProcessor {
       }
       LOG.info("Completed executing command(queryId=" + queryId + "); Time taken: " + duration + " seconds");
     }
-    plan.setDone();
 
-    if (SessionState.get() != null) {
-      try {
-        SessionState.get().getHiveHistory().logPlanProgress(plan);
-      } catch (Exception e) {
-        // ignore
-      }
+    releasePlan(plan);
+
+    if (console != null) {
+      console.printInfo("OK");
     }
-    console.printInfo("OK");
 
     return (0);
+  }
+
+  private synchronized void releasePlan(QueryPlan plan) {
+    // Plan maybe null if Driver.close is called in another thread for the same Driver object
+    if (plan != null) {
+      plan.setDone();
+      if (SessionState.get() != null) {
+        try {
+          SessionState.get().getHiveHistory().logPlanProgress(plan);
+        } catch (Exception e) {
+          // Log and ignore
+          LOG.warn("Could not log query plan progress", e);
+        }
+      }
+    }
+  }
+
+  private void setQueryDisplays(List<Task<? extends Serializable>> tasks) {
+    if (tasks != null) {
+      for (Task<? extends Serializable> task : tasks) {
+        task.setQueryDisplay(queryDisplay);
+        setQueryDisplays(task.getDependentTasks());
+      }
+    }
   }
 
   private void logMrWarning(int mrJobs) {
@@ -1805,9 +1927,11 @@ public class Driver implements CommandProcessor {
     }
   }
 
-  private void invokeFailureHooks(PerfLogger perfLogger, HookContext hookContext) throws Exception {
+  private void invokeFailureHooks(PerfLogger perfLogger,
+      HookContext hookContext, String errorMessage, Throwable exception) throws Exception {
     hookContext.setHookType(HookContext.HookType.ON_FAILURE_HOOK);
     hookContext.setErrorMessage(errorMessage);
+    hookContext.setException(exception);
     // Get all the failure execution hooks and execute them.
     for (Hook ofh : getHooks(HiveConf.ConfVars.ONFAILUREHOOKS)) {
       perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.FAILURE_HOOK + ofh.getClass().getName());
@@ -1848,7 +1972,7 @@ public class Driver implements CommandProcessor {
       cxt.incCurJobNo(1);
       console.printInfo("Launching Job " + cxt.getCurJobNo() + " out of " + jobs);
     }
-    tsk.initialize(conf, plan, cxt, ctx.getOpContext());
+    tsk.initialize(queryState, plan, cxt, ctx.getOpContext());
     TaskResult tskRes = new TaskResult();
     TaskRunner tskRun = new TaskRunner(tsk, tskRes);
 
@@ -1880,6 +2004,17 @@ public class Driver implements CommandProcessor {
       throw new IOException("FAILED: Operation cancelled");
     }
     if (isFetchingTable()) {
+      /**
+       * If resultset serialization to thrift object is enabled, and if the destination table is
+       * indeed written using ThriftJDBCBinarySerDe, read one row from the output sequence file,
+       * since it is a blob of row batches.
+       */
+      if (fetchTask.getWork().isHiveServerQuery() && HiveConf.getBoolVar(conf,
+          HiveConf.ConfVars.HIVE_SERVER2_THRIFT_RESULTSET_SERIALIZE_IN_TASKS)
+          && (fetchTask.getTblDesc().getSerdeClassName()
+              .equalsIgnoreCase(ThriftJDBCBinarySerDe.class.getName()))) {
+        maxRows = 1;
+      }
       fetchTask.setMaxRows(maxRows);
       return fetchTask.fetch(res);
     }
@@ -1938,7 +2073,7 @@ public class Driver implements CommandProcessor {
         throw new IOException("Error closing the current fetch task", e);
       }
       // FetchTask should not depend on the plan.
-      fetchTask.initialize(conf, null, null, ctx.getOpContext());
+      fetchTask.initialize(queryState, null, null, ctx.getOpContext());
     } else {
       ctx.resetStream();
       resStream = null;
@@ -2027,5 +2162,16 @@ public class Driver implements CommandProcessor {
    */
   public void setOperationId(String opId) {
     this.operationId = opId;
+  }
+
+  /** 
+   * Resets QueryState to get new queryId on Driver reuse.
+   */
+  public void resetQueryState() {
+    // Note: Driver cleanup for reuse at this point is not very clear. The assumption here is that
+    // repeated compile/execute calls create new contexts, plan, etc., so we don't need to worry
+    // propagating queryState into those existing fields, or resetting them.
+    releaseResources();
+    this.queryState = new QueryState(queryState.getConf());
   }
 }

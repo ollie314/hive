@@ -19,14 +19,15 @@ package org.apache.hadoop.hive.llap.metrics;
 
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheAllocatedArena;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheCapacityRemaining;
+import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheCapacityRemainingPercentage;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheCapacityTotal;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheCapacityUsed;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheHitBytes;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheHitRatio;
+import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheMetrics;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheNumLockedBuffers;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheReadRequests;
 import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheRequestedBytes;
-import static org.apache.hadoop.hive.llap.metrics.LlapDaemonCacheInfo.CacheMetrics;
 import static org.apache.hadoop.metrics2.impl.MsInfo.ProcessName;
 import static org.apache.hadoop.metrics2.impl.MsInfo.SessionId;
 
@@ -137,7 +138,11 @@ public class LlapDaemonCacheMetrics implements MetricsSource {
     float cacheHitRatio = cacheRequestedBytes.value() == 0 ? 0.0f :
         (float) cacheHitBytes.value() / (float) cacheRequestedBytes.value();
 
-    rb.addCounter(CacheCapacityRemaining, cacheCapacityTotal.value() - cacheCapacityUsed.value())
+    long cacheCapacityRemaining = cacheCapacityTotal.value() - cacheCapacityUsed.value();
+    float cacheRemainingPercent = cacheCapacityTotal.value() == 0 ? 0.0f :
+        (float) cacheCapacityRemaining / (float) cacheCapacityTotal.value();
+    rb.addCounter(CacheCapacityRemaining, cacheCapacityRemaining)
+        .addGauge(CacheCapacityRemainingPercentage, cacheRemainingPercent)
         .addCounter(CacheCapacityTotal, cacheCapacityTotal.value())
         .addCounter(CacheCapacityUsed, cacheCapacityUsed.value())
         .addCounter(CacheReadRequests, cacheReadRequests.value())

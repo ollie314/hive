@@ -28,6 +28,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -36,6 +38,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeSet;
 
 import jline.Terminal;
@@ -55,18 +58,24 @@ class BeeLineOpts implements Completer {
       PROPERTY_PREFIX + "system.exit";
   public static final String DEFAULT_NULL_STRING = "NULL";
   public static final char DEFAULT_DELIMITER_FOR_DSV = '|';
+  public static final int DEFAULT_MAX_COLUMN_WIDTH = 50;
+  public static final int DEFAULT_INCREMENTAL_BUFFER_ROWS = 1000;
+
+  public static String URL_ENV_PREFIX = "BEELINE_URL_";
 
   private final BeeLine beeLine;
   private boolean autosave = false;
   private boolean silent = false;
   private boolean color = false;
   private boolean showHeader = true;
+  private boolean showDbInPrompt = false;
   private int headerInterval = 100;
   private boolean fastConnect = true;
   private boolean autoCommit = false;
   private boolean verbose = false;
   private boolean force = false;
   private boolean incremental = false;
+  private int incrementalBufferRows = DEFAULT_INCREMENTAL_BUFFER_ROWS;
   private boolean showWarnings = false;
   private boolean showNestedErrs = false;
   private boolean showElapsedTime = true;
@@ -75,7 +84,7 @@ class BeeLineOpts implements Completer {
   private final Terminal terminal = TerminalFactory.get();
   private int maxWidth = DEFAULT_MAX_WIDTH;
   private int maxHeight = DEFAULT_MAX_HEIGHT;
-  private int maxColumnWidth = 15;
+  private int maxColumnWidth = DEFAULT_MAX_COLUMN_WIDTH;
   int timeout = -1;
   private String isolation = DEFAULT_ISOLATION_LEVEL;
   private String outputFormat = "table";
@@ -101,6 +110,36 @@ class BeeLineOpts implements Completer {
   private Map<String, String> hiveVariables = new HashMap<String, String>();
   private Map<String, String> hiveConfVariables = new HashMap<String, String>();
   private boolean helpAsked;
+
+  private String lastConnectedUrl = null;
+
+  private TreeSet<String> cachedPropertyNameSet = null;
+
+  @Retention(RetentionPolicy.RUNTIME)
+  public @interface Ignore {
+    // marker annotations for functions that Reflector should ignore / pretend it does not exist
+
+    // NOTE: BeeLineOpts uses Reflector in an extensive way to call getters and setters on itself
+    // If you want to add any getters or setters to this class, but not have it interfere with
+    // saved variables in beeline.properties, careful use of this marker is needed.
+    // Also possible to get this by naming these functions obtainBlah instead of getBlah
+    // and so on, but that is not explicit and will likely surprise people looking at the
+    // code in the future. Better to be explicit in intent.
+  }
+
+  public interface Env {
+    // Env interface to mock out dealing with Environment variables
+    // This allows us to interface with Environment vars through
+    // BeeLineOpts while allowing tests to mock out Env setting if needed.
+    String get(String envVar);
+  }
+
+  public static Env env = new Env() {
+    @Override
+    public String get(String envVar) {
+      return System.getenv(envVar); // base env impl simply defers to System.getenv.
+    }
+  };
 
   public BeeLineOpts(BeeLine beeLine, Properties props) {
     this.beeLine = beeLine;
@@ -177,23 +216,34 @@ class BeeLineOpts implements Completer {
 
   String[] propertyNames()
       throws IllegalAccessException, InvocationTargetException {
-    TreeSet<String> names = new TreeSet<String>();
-
-    // get all the values from getXXX methods
-    Method[] m = getClass().getDeclaredMethods();
-    for (int i = 0; m != null && i < m.length; i++) {
-      if (!(m[i].getName().startsWith("get"))) {
-        continue;
-      }
-      if (m[i].getParameterTypes().length != 0) {
-        continue;
-      }
-      String propName = m[i].getName().substring(3).toLowerCase();
-      names.add(propName);
-    }
+    Set<String> names = propertyNamesSet(); // make sure we initialize if necessary
     return names.toArray(new String[names.size()]);
   }
 
+  Set<String> propertyNamesSet()
+    throws IllegalAccessException, InvocationTargetException {
+    if (cachedPropertyNameSet == null){
+      TreeSet<String> names = new TreeSet<String>();
+
+      // get all the values from getXXX methods
+      Method[] m = getClass().getDeclaredMethods();
+      for (int i = 0; m != null && i < m.length; i++) {
+        if (!(m[i].getName().startsWith("get"))) {
+          continue;
+        }
+        if (m[i].getAnnotation(Ignore.class) != null){
+          continue; // not actually a getter
+        }
+        if (m[i].getParameterTypes().length != 0) {
+          continue;
+        }
+        String propName = m[i].getName().substring(3).toLowerCase();
+        names.add(propName);
+      }
+      cachedPropertyNameSet = names;
+    }
+    return cachedPropertyNameSet;
+  }
 
   public Properties toProperties()
       throws IllegalAccessException, InvocationTargetException,
@@ -421,6 +471,24 @@ class BeeLineOpts implements Completer {
     }
   }
 
+  public void setShowDbInPrompt(boolean showDbInPrompt) {
+    this.showDbInPrompt = showDbInPrompt;
+  }
+
+  /**
+   * In beeline mode returns the beeline option provided by command line argument or config file
+   * In compatibility mode returns the value of the hive.cli.print.current.db config variable
+   * @return Should the current db displayed in the prompt
+   */
+  public boolean getShowDbInPrompt() {
+    if (beeLine.isBeeLine()) {
+      return showDbInPrompt;
+    } else {
+      HiveConf conf = beeLine.getCommands().getHiveConf(true);
+      return HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIPRINTCURRENTDB);
+    }
+  }
+
   public void setHeaderInterval(int headerInterval) {
     this.headerInterval = headerInterval;
   }
@@ -443,6 +511,14 @@ class BeeLineOpts implements Completer {
 
   public boolean getIncremental() {
     return incremental;
+  }
+
+  public void setIncrementalBufferRows(int incrementalBufferRows) {
+    this.incrementalBufferRows = incrementalBufferRows;
+  }
+
+  public int getIncrementalBufferRows() {
+    return this.incrementalBufferRows;
   }
 
   public void setSilent(boolean silent) {
@@ -496,6 +572,7 @@ class BeeLineOpts implements Completer {
     return maxHeight;
   }
 
+  @Ignore
   public File getPropertiesFile() {
     return rcFile;
   }
@@ -528,6 +605,7 @@ class BeeLineOpts implements Completer {
     this.nullEmptyString = nullStringEmpty;
   }
 
+  @Ignore
   public String getNullString(){
     return nullEmptyString ? "" : DEFAULT_NULL_STRING;
   }
@@ -556,6 +634,7 @@ class BeeLineOpts implements Completer {
     this.delimiterForDSV = delimiterForDSV;
   }
 
+  @Ignore
   public HiveConf getConf() {
     return conf;
   }
@@ -566,6 +645,24 @@ class BeeLineOpts implements Completer {
 
   public boolean isHelpAsked() {
     return helpAsked;
+  }
+
+  public String getLastConnectedUrl(){
+    return lastConnectedUrl;
+  }
+
+  public void setLastConnectedUrl(String lastConnectedUrl){
+    this.lastConnectedUrl = lastConnectedUrl;
+  }
+
+  @Ignore
+  public static Env getEnv(){
+    return env;
+  }
+
+  @Ignore
+  public static void setEnv(Env envToUse){
+    env = envToUse;
   }
 }
 

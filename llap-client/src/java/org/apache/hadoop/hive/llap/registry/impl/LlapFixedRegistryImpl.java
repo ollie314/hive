@@ -19,6 +19,7 @@ import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -55,6 +56,7 @@ public class LlapFixedRegistryImpl implements ServiceRegistry {
   private final int shuffle;
   private final int mngPort;
   private final int webPort;
+  private final int outputFormatPort;
   private final String webScheme;
   private final String[] hosts;
   private final int memory;
@@ -69,6 +71,7 @@ public class LlapFixedRegistryImpl implements ServiceRegistry {
     this.shuffle = HiveConf.getIntVar(conf, ConfVars.LLAP_DAEMON_YARN_SHUFFLE_PORT);
     this.resolveHosts = conf.getBoolean(FIXED_REGISTRY_RESOLVE_HOST_NAMES, true);
     this.mngPort = HiveConf.getIntVar(conf, ConfVars.LLAP_MANAGEMENT_RPC_PORT);
+    this.outputFormatPort = HiveConf.getIntVar(conf, ConfVars.LLAP_DAEMON_OUTPUT_SERVICE_PORT);
 
 
     this.webPort = HiveConf.getIntVar(conf, ConfVars.LLAP_DAEMON_WEB_PORT);
@@ -171,6 +174,11 @@ public class LlapFixedRegistryImpl implements ServiceRegistry {
     }
 
     @Override
+    public int getOutputFormatPort() {
+      return LlapFixedRegistryImpl.this.outputFormatPort;
+    }
+
+    @Override
     public String getServicesAddress() {
       return serviceAddress;
     }
@@ -215,12 +223,12 @@ public class LlapFixedRegistryImpl implements ServiceRegistry {
     }
 
     @Override
-    public Map<String, ServiceInstance> getAll() {
-      return instances;
+    public Collection<ServiceInstance> getAll() {
+      return instances.values();
     }
 
     @Override
-    public List<ServiceInstance> getAllInstancesOrdered() {
+    public List<ServiceInstance> getAllInstancesOrdered(boolean consistentIndexes) {
       List<ServiceInstance> list = new LinkedList<>();
       list.addAll(instances.values());
       Collections.sort(list, new Comparator<ServiceInstance>() {
@@ -245,6 +253,11 @@ public class LlapFixedRegistryImpl implements ServiceRegistry {
         byHost.add(inst);
       }
       return byHost;
+    }
+
+    @Override
+    public int size() {
+      return instances.size();
     }
   }
 

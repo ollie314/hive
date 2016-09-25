@@ -248,33 +248,55 @@ public class CLIService extends CompositeService implements ICLIService {
     return infoValue;
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#executeStatement(org.apache.hive.service.cli.SessionHandle,
-   *  java.lang.String, java.util.Map)
+  /**
+   * Execute statement on the server. This is a blocking call.
    */
   @Override
   public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
-      Map<String, String> confOverlay)
-          throws HiveSQLException {
-    OperationHandle opHandle = sessionManager.getSession(sessionHandle)
-        .executeStatement(statement, confOverlay);
+      Map<String, String> confOverlay) throws HiveSQLException {
+    OperationHandle opHandle =
+        sessionManager.getSession(sessionHandle).executeStatement(statement, confOverlay);
     LOG.debug(sessionHandle + ": executeStatement()");
     return opHandle;
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#executeStatementAsync(org.apache.hive.service.cli.SessionHandle,
-   *  java.lang.String, java.util.Map)
+  /**
+   * Execute statement on the server with a timeout. This is a blocking call.
+   */
+  @Override
+  public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+    OperationHandle opHandle =
+        sessionManager.getSession(sessionHandle).executeStatement(statement, confOverlay,
+            queryTimeout);
+    LOG.debug(sessionHandle + ": executeStatement()");
+    return opHandle;
+  }
+
+  /**
+   * Execute statement asynchronously on the server. This is a non-blocking call
    */
   @Override
   public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
       Map<String, String> confOverlay) throws HiveSQLException {
-    OperationHandle opHandle = sessionManager.getSession(sessionHandle)
-        .executeStatementAsync(statement, confOverlay);
+    OperationHandle opHandle =
+        sessionManager.getSession(sessionHandle).executeStatementAsync(statement, confOverlay);
     LOG.debug(sessionHandle + ": executeStatementAsync()");
     return opHandle;
   }
 
+  /**
+   * Execute statement asynchronously on the server with a timeout. This is a non-blocking call
+   */
+  @Override
+  public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+    OperationHandle opHandle =
+        sessionManager.getSession(sessionHandle).executeStatementAsync(statement, confOverlay,
+            queryTimeout);
+    LOG.debug(sessionHandle + ": executeStatementAsync()");
+    return opHandle;
+  }
 
   /* (non-Javadoc)
    * @see org.apache.hive.service.cli.ICLIService#getTypeInfo(org.apache.hive.service.cli.SessionHandle)
@@ -365,6 +387,36 @@ public class CLIService extends CompositeService implements ICLIService {
   }
 
   /* (non-Javadoc)
+   * @see org.apache.hive.service.cli.ICLIService#getPrimaryKeys(org.apache.hive.service.cli.SessionHandle)
+   */
+  @Override
+  public OperationHandle getPrimaryKeys(SessionHandle sessionHandle,
+		  String catalog, String schema, String table)
+          throws HiveSQLException {
+    OperationHandle opHandle = sessionManager.getSession(sessionHandle)
+        .getPrimaryKeys(catalog, schema, table);
+    LOG.debug(sessionHandle + ": getPrimaryKeys()");
+    return opHandle;
+  }
+
+  /* (non-Javadoc)
+   * @see org.apache.hive.service.cli.ICLIService#getCrossReference(org.apache.hive.service.cli.SessionHandle)
+   */
+  @Override
+  public OperationHandle getCrossReference(SessionHandle sessionHandle,
+		  String primaryCatalog,
+	      String primarySchema, String primaryTable, String foreignCatalog,
+	      String foreignSchema, String foreignTable)
+          throws HiveSQLException {
+    OperationHandle opHandle = sessionManager.getSession(sessionHandle)
+        .getCrossReference(primaryCatalog, primarySchema, primaryTable, 
+         foreignCatalog,
+         foreignSchema, foreignTable);
+    LOG.debug(sessionHandle + ": getCrossReference()");
+    return opHandle;
+  }
+  
+  /* (non-Javadoc)
    * @see org.apache.hive.service.cli.ICLIService#getOperationStatus(org.apache.hive.service.cli.OperationHandle)
    */
   @Override
@@ -373,14 +425,19 @@ public class CLIService extends CompositeService implements ICLIService {
     Operation operation = sessionManager.getOperationManager().getOperation(opHandle);
     /**
      * If this is a background operation run asynchronously,
-     * we block for a configured duration, before we return
-     * (duration: HIVE_SERVER2_LONG_POLLING_TIMEOUT).
+     * we block for a duration determined by a step function, before we return
      * However, if the background operation is complete, we return immediately.
      */
     if (operation.shouldRunAsync()) {
       HiveConf conf = operation.getParentSession().getHiveConf();
-      long timeout = HiveConf.getTimeVar(conf,
+      long maxTimeout = HiveConf.getTimeVar(conf,
           HiveConf.ConfVars.HIVE_SERVER2_LONG_POLLING_TIMEOUT, TimeUnit.MILLISECONDS);
+
+      final long elapsed = System.currentTimeMillis() - operation.getBeginTime();
+      // A step function to increase the polling timeout by 500 ms every 10 sec, 
+      // starting from 500 ms up to HIVE_SERVER2_LONG_POLLING_TIMEOUT
+      final long timeout = Math.min(maxTimeout, (elapsed / TimeUnit.SECONDS.toMillis(10) + 1) * 500);
+
       try {
         operation.getBackgroundHandle().get(timeout, TimeUnit.MILLISECONDS);
       } catch (TimeoutException e) {

@@ -41,6 +41,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.common.io.CachingPrintStream;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -48,6 +49,7 @@ import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.BucketMatcher;
 import org.apache.hadoop.hive.ql.exec.FetchOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
@@ -121,9 +123,9 @@ public class MapredLocalTask extends Task<MapredLocalWork> implements Serializab
   }
 
   @Override
-  public void initialize(HiveConf conf, QueryPlan queryPlan, DriverContext driverContext,
+  public void initialize(QueryState queryState, QueryPlan queryPlan, DriverContext driverContext,
       CompilationOpContext opContext) {
-    super.initialize(conf, queryPlan, driverContext, opContext);
+    super.initialize(queryState, queryPlan, driverContext, opContext);
     job = new JobConf(conf, ExecDriver.class);
     execContext = new ExecMapperContext(job);
     //we don't use the HadoopJobExecHooks for local tasks
@@ -308,7 +310,7 @@ public class MapredLocalTask extends Task<MapredLocalWork> implements Serializab
         String name = entry.getKey();
         String value = entry.getValue();
         env[pos++] = name + "=" + value;
-        LOG.debug("Setting env: " + env[pos-1]);
+        LOG.debug("Setting env: " + name + "=" + LogUtils.maskIfPassword(name, value));
       }
 
       LOG.info("Executing: " + cmdLine);
@@ -318,10 +320,18 @@ public class MapredLocalTask extends Task<MapredLocalWork> implements Serializab
 
       CachingPrintStream errPrintStream = new CachingPrintStream(System.err);
 
-      StreamPrinter outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out,
-        OperationLog.getCurrentOperationLog().getPrintStream());
-      StreamPrinter errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream,
-        OperationLog.getCurrentOperationLog().getPrintStream());
+      StreamPrinter outPrinter;
+      StreamPrinter errPrinter;
+      OperationLog operationLog = OperationLog.getCurrentOperationLog();
+      if (operationLog != null) {
+        outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out,
+            operationLog.getPrintStream());
+        errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream,
+            operationLog.getPrintStream());
+      } else {
+        outPrinter = new StreamPrinter(executor.getInputStream(), null, System.out);
+        errPrinter = new StreamPrinter(executor.getErrorStream(), null, errPrintStream);
+      }
 
       outPrinter.start();
       errPrinter.start();
@@ -462,7 +472,8 @@ public class MapredLocalTask extends Task<MapredLocalWork> implements Serializab
       // push down filters
       HiveInputFormat.pushFilters(jobClone, ts);
 
-      AcidUtils.setTransactionalTableScan(job, ts.getConf().isAcidTable());
+      AcidUtils.setTransactionalTableScan(jobClone, ts.getConf().isAcidTable());
+      AcidUtils.setAcidOperationalProperties(jobClone, ts.getConf().getAcidOperationalProperties());
 
       // create a fetch operator
       FetchOperator fetchOp = new FetchOperator(entry.getValue(), jobClone);

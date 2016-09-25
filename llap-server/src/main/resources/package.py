@@ -43,6 +43,11 @@ class LlapResource(object):
 			self.queueString = "--queue "
 			self.queueString += config["hive.llap.daemon.queue.name"]
 
+		if (not config.get("private.hive.llap.servicedriver.cluster.name")):
+			self.clusterName="llap0"
+		else:
+			self.clusterName = config["private.hive.llap.servicedriver.cluster.name"]
+
 	def __repr__(self):
 		return "<LlapResource heap=%d container=%d>" % (self.heap_size, self.container_size)
 
@@ -66,6 +71,7 @@ def main(args):
 	parser.add_argument("--args", default="")
 	parser.add_argument("--name", default="llap0")
 	parser.add_argument("--loglevel", default="INFO")
+	parser.add_argument("--logger", default="RFA")
 	parser.add_argument("--chaosmonkey", type=int, default=0)
 	parser.add_argument("--slider-am-container-mb", type=int, default=1024)
 	parser.add_argument("--slider-keytab-dir", default="")
@@ -96,6 +102,10 @@ def main(args):
 		return
 	config = json_parse(open(join(input, "config.json")).read())
 	java_home = config["java.home"]
+	max_direct_memory = config["max_direct_memory"]
+	daemon_args = args.args
+	if long(max_direct_memory) > 0:
+		daemon_args = " -XX:MaxDirectMemorySize=%s %s" % (max_direct_memory, daemon_args)
 	resource = LlapResource(config)
 	# 5% container failure every monkey_interval seconds
 	monkey_percentage = 5 # 5%
@@ -108,9 +118,10 @@ def main(args):
 		"container.cores" : resource.container_cores,
 		"hadoop_home" : os.getenv("HADOOP_HOME"),
 		"java_home" : java_home,
-		"name" : args.name,
-		"daemon_args" : args.args,
+		"name" : resource.clusterName,
+		"daemon_args" : daemon_args,
 		"daemon_loglevel" : args.loglevel,
+		"daemon_logger" : args.logger,
 		"queue.string" : resource.queueString,
 		"monkey_interval" : args.chaosmonkey,
 		"monkey_percentage" : monkey_percentage,

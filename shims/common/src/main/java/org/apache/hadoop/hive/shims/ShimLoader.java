@@ -20,6 +20,8 @@ package org.apache.hadoop.hive.shims;
 import org.apache.hadoop.hive.thrift.HadoopThriftAuthBridge;
 import org.apache.hadoop.util.VersionInfo;
 import org.apache.log4j.AppenderSkeleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,9 +31,10 @@ import java.util.Map;
  *
  */
 public abstract class ShimLoader {
+  private static final Logger LOG = LoggerFactory.getLogger(ShimLoader.class);
   public static String HADOOP23VERSIONNAME = "0.23";
 
-  private static HadoopShims hadoopShims;
+  private static volatile HadoopShims hadoopShims;
   private static JettyShims jettyShims;
   private static AppenderSkeleton eventCounter;
   private static HadoopThriftAuthBridge hadoopThriftAuthBridge;
@@ -88,9 +91,18 @@ public abstract class ShimLoader {
    * Factory method to get an instance of HadoopShims based on the
    * version of Hadoop on the classpath.
    */
-  public static synchronized HadoopShims getHadoopShims() {
+  public static HadoopShims getHadoopShims() {
     if (hadoopShims == null) {
-      hadoopShims = loadShims(HADOOP_SHIM_CLASSES, HadoopShims.class);
+      synchronized (ShimLoader.class) {
+        if (hadoopShims == null) {
+          try {
+            hadoopShims = loadShims(HADOOP_SHIM_CLASSES, HadoopShims.class);
+          } catch (Throwable t) {
+            LOG.error("Error loading shims", t);
+            throw new RuntimeException(t);
+          }
+        }
+      }
     }
     return hadoopShims;
   }

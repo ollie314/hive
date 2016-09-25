@@ -148,52 +148,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- should be allowed
 explain extended select /* + MAPJOIN(R) */ * from test1 L join test1 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -244,6 +198,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -263,6 +219,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -351,6 +309,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -370,6 +330,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -391,52 +353,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join test2 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test2
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test2
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -487,6 +403,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test2
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test2 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -506,6 +424,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test2
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test2 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -594,6 +514,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test2
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test2 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -613,6 +535,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test2
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test2 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -636,47 +560,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- should not apply bucket mapjoin
 explain extended select /* + MAPJOIN(R) */ * from test1 L join test1 R on L.key+L.key=R.key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            R
-         =
-            +
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-            .
-               TOK_TABLE_OR_COL
-                  R
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -722,6 +605,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -741,6 +626,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -823,6 +710,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -842,6 +731,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -863,52 +754,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join test2 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test2
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -954,6 +799,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test2
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test2 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -973,6 +820,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test2
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test2 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1055,6 +904,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1074,6 +925,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1095,52 +948,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join test3 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test3
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -1186,6 +993,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test3
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test3 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1205,6 +1014,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test3
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test3 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1287,6 +1098,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1306,6 +1119,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1327,52 +1142,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test1 L join test4 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test1
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test4
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -1418,6 +1187,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test4
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test4 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1437,6 +1208,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test4
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test4 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1519,6 +1292,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test1
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test1 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1538,6 +1313,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test1
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test1 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1559,52 +1336,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join test3 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test2
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test3
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -1650,6 +1381,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test3
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test3 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1669,6 +1402,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test3
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test3 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1751,6 +1486,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test2
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test2 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1770,6 +1507,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test2
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test2 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1791,52 +1530,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test2 L join test4 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test2
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test4
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -1882,6 +1575,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test4
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test4 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1901,6 +1596,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test4
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test4 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -1983,6 +1680,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test2
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test2 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -2002,6 +1701,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test2
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test2 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -2023,52 +1724,6 @@ PREHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test3 L join t
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select /* + MAPJOIN(R) */ * from test3 L join test4 R on L.key=R.key AND L.value=R.value
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               test3
-            L
-         TOK_TABREF
-            TOK_TABNAME
-               test4
-            R
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     L
-                  value
-               .
-                  TOK_TABLE_OR_COL
-                     R
-                  value
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_HINTLIST
-            TOK_HINT
-               TOK_MAPJOIN
-               TOK_HINTARGLIST
-                  R
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -2114,6 +1769,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test4
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test4 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -2133,6 +1790,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test4
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test4 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -2215,6 +1874,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.test3
                     numFiles 3
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct test3 { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -2234,6 +1895,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.test3
                       numFiles 3
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct test3 { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe

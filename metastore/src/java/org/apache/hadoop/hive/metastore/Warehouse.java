@@ -32,7 +32,6 @@ import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,16 +109,6 @@ public class Warehouse {
 
   public FileSystem getFs(Path f) throws MetaException {
     return getFs(f, conf);
-  }
-
-  public static void closeFs(FileSystem fs) throws MetaException {
-    try {
-      if (fs != null) {
-        fs.close();
-      }
-    } catch (IOException e) {
-      MetaStoreUtils.logAndThrowMetaException(e);
-    }
   }
 
 

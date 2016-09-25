@@ -26,20 +26,25 @@ import java.net.URISyntaxException;
 import java.security.AccessControlException;
 import java.security.PrivilegedExceptionAction;
 import java.util.BitSet;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
+import org.apache.hadoop.fs.GlobFilter;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.fs.Trash;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.io.HdfsUtils;
 import org.apache.hadoop.hive.shims.HadoopShims;
-import org.apache.hadoop.hive.shims.HadoopShims.HdfsFileStatus;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -48,7 +53,6 @@ import org.apache.hadoop.util.StringUtils;
 import org.apache.hive.common.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 /**
  * Collection of file manipulation utilities common across Hive.
@@ -387,14 +391,18 @@ public final class FileUtils {
     // Otherwise, try user impersonation. Current user must be configured to do user impersonation.
     UserGroupInformation proxyUser = UserGroupInformation.createProxyUser(
         user, UserGroupInformation.getLoginUser());
-    proxyUser.doAs(new PrivilegedExceptionAction<Object>() {
-      @Override
-      public Object run() throws Exception {
-        FileSystem fsAsUser = FileSystem.get(fs.getUri(), fs.getConf());
-        ShimLoader.getHadoopShims().checkFileAccess(fsAsUser, stat, action);
-        return null;
-      }
-    });
+    try {
+      proxyUser.doAs(new PrivilegedExceptionAction<Object>() {
+        @Override
+        public Object run() throws Exception {
+          FileSystem fsAsUser = FileSystem.get(fs.getUri(), fs.getConf());
+          ShimLoader.getHadoopShims().checkFileAccess(fsAsUser, stat, action);
+          return null;
+        }
+      });
+    } finally {
+      FileSystem.closeAllForUGI(proxyUser);
+    }
   }
 
   /**
@@ -409,7 +417,12 @@ public final class FileUtils {
    * @throws IOException
    */
   public static boolean isActionPermittedForFileHierarchy(FileSystem fs, FileStatus fileStatus,
-      String userName, FsAction action) throws Exception {
+                                                          String userName, FsAction action) throws Exception {
+    return isActionPermittedForFileHierarchy(fs,fileStatus,userName, action, true);
+  }
+
+  public static boolean isActionPermittedForFileHierarchy(FileSystem fs, FileStatus fileStatus,
+      String userName, FsAction action, boolean recurse) throws Exception {
     boolean isDir = fileStatus.isDir();
 
     FsAction dirActionNeeded = action;
@@ -425,15 +438,15 @@ public final class FileUtils {
       return false;
     }
 
-    if (!isDir) {
+    if ((!isDir) || (!recurse)) {
       // no sub dirs to be checked
       return true;
     }
     // check all children
     FileStatus[] childStatuses = fs.listStatus(fileStatus.getPath());
     for (FileStatus childStatus : childStatuses) {
-      // check children recursively
-      if (!isActionPermittedForFileHierarchy(fs, childStatus, userName, action)) {
+      // check children recursively - recurse is true if we're here.
+      if (!isActionPermittedForFileHierarchy(fs, childStatus, userName, action, true)) {
         return false;
       }
     }
@@ -472,22 +485,27 @@ public final class FileUtils {
     }
     return false;
   }
-
   public static boolean isOwnerOfFileHierarchy(FileSystem fs, FileStatus fileStatus, String userName)
+      throws IOException {
+    return isOwnerOfFileHierarchy(fs, fileStatus, userName, true);
+  }
+
+  public static boolean isOwnerOfFileHierarchy(FileSystem fs, FileStatus fileStatus,
+      String userName, boolean recurse)
       throws IOException {
     if (!fileStatus.getOwner().equals(userName)) {
       return false;
     }
 
-    if (!fileStatus.isDir()) {
+    if ((!fileStatus.isDir()) || (!recurse)) {
       // no sub dirs to be checked
       return true;
     }
     // check all children
     FileStatus[] childStatuses = fs.listStatus(fileStatus.getPath());
     for (FileStatus childStatus : childStatuses) {
-      // check children recursively
-      if (!isOwnerOfFileHierarchy(fs, childStatus, userName)) {
+      // check children recursively - recurse is true if we're here.
+      if (!isOwnerOfFileHierarchy(fs, childStatus, userName, true)) {
         return false;
       }
     }
@@ -526,11 +544,13 @@ public final class FileUtils {
       if (!success) {
         return false;
       } else {
-        HadoopShims shim = ShimLoader.getHadoopShims();
-        HdfsFileStatus fullFileStatus = shim.getFullFileStatus(conf, fs, lastExistingParent);
         try {
           //set on the entire subtree
-          shim.setFullFileStatus(conf, fullFileStatus, fs, firstNonExistentParent);
+          if (inheritPerms) {
+            HdfsUtils.setFullFileStatus(conf,
+                new HdfsUtils.HadoopFileStatus(conf, fs, lastExistingParent), fs,
+                firstNonExistentParent, true);
+          }
         } catch (Exception e) {
           LOG.warn("Error setting permissions of " + firstNonExistentParent, e);
         }
@@ -566,9 +586,8 @@ public final class FileUtils {
 
     boolean inheritPerms = conf.getBoolVar(HiveConf.ConfVars.HIVE_WAREHOUSE_SUBDIR_INHERIT_PERMS);
     if (copied && inheritPerms) {
-      HdfsFileStatus fullFileStatus = shims.getFullFileStatus(conf, dstFS, dst);
       try {
-        shims.setFullFileStatus(conf, fullFileStatus, dstFS, dst);
+        HdfsUtils.setFullFileStatus(conf, new HdfsUtils.HadoopFileStatus(conf, dstFS, dst.getParent()), dstFS, dst, true);
       } catch (Exception e) {
         LOG.warn("Error setting permissions or group of " + dst, e);
       }
@@ -577,96 +596,35 @@ public final class FileUtils {
   }
 
   /**
-   * Trashes or deletes all files under a directory. Leaves the directory as is.
-   * @param fs FileSystem to use
-   * @param f path of directory
-   * @param conf hive configuration
-   * @param forceDelete whether to force delete files if trashing does not succeed
-   * @return true if deletion successful
-   * @throws FileNotFoundException
-   * @throws IOException
-   */
-  public static boolean trashFilesUnderDir(FileSystem fs, Path f, Configuration conf,
-      boolean forceDelete) throws FileNotFoundException, IOException {
-    FileStatus[] statuses = fs.listStatus(f, HIDDEN_FILES_PATH_FILTER);
-    boolean result = true;
-    for (FileStatus status : statuses) {
-      result = result & moveToTrash(fs, status.getPath(), conf, forceDelete);
-    }
-    return result;
-  }
-
-  /**
-   * Move a particular file or directory to the trash. If for a certain reason the trashing fails
-   * it will force deletes the file or directory
-   * @param fs FileSystem to use
-   * @param f path of file or directory to move to trash.
-   * @param conf
-   * @return true if move successful
-   * @throws IOException
-   */
-  public static boolean moveToTrash(FileSystem fs, Path f, Configuration conf) throws IOException {
-    return moveToTrash(fs, f, conf, true);
-  }
-
-  /**
    * Move a particular file or directory to the trash.
    * @param fs FileSystem to use
    * @param f path of file or directory to move to trash.
    * @param conf
-   * @param forceDelete whether force delete the file or directory if trashing fails
    * @return true if move successful
    * @throws IOException
    */
-  public static boolean moveToTrash(FileSystem fs, Path f, Configuration conf, boolean forceDelete)
+  public static boolean moveToTrash(FileSystem fs, Path f, Configuration conf)
       throws IOException {
-    LOG.info("deleting  " + f);
-    HadoopShims hadoopShim = ShimLoader.getHadoopShims();
-
+    LOG.debug("deleting  " + f);
     boolean result = false;
     try {
-      result = hadoopShim.moveToAppropriateTrash(fs, f, conf);
+      result = Trash.moveToAppropriateTrash(fs, f, conf);
       if (result) {
-        LOG.info("Moved to trash: " + f);
+        LOG.trace("Moved to trash: " + f);
         return true;
       }
     } catch (IOException ioe) {
-      if (forceDelete) {
-        // for whatever failure reason including that trash has lower encryption zone
-        // retry with force delete
-        LOG.warn(ioe.getMessage() + "; Force to delete it.");
-      } else {
-        throw ioe;
-      }
+      // for whatever failure reason including that trash has lower encryption zone
+      // retry with force delete
+      LOG.warn(ioe.getMessage() + "; Force to delete it.");
     }
 
-    if (forceDelete) {
-      result = fs.delete(f, true);
-      if (!result) {
-        LOG.error("Failed to delete " + f);
-      }
+    result = fs.delete(f, true);
+    if (!result) {
+      LOG.error("Failed to delete " + f);
     }
 
     return result;
-  }
-
-  /**
-   * Check if first path is a subdirectory of second path.
-   * Both paths must belong to the same filesystem.
-   *
-   * @param p1 first path
-   * @param p2 second path
-   * @param fs FileSystem, both paths must belong to the same filesystem
-   * @return
-   */
-  public static boolean isSubDir(Path p1, Path p2, FileSystem fs) {
-    String path1 = fs.makeQualified(p1).toString();
-    String path2 = fs.makeQualified(p2).toString();
-    if (path1.startsWith(path2)) {
-      return true;
-    }
-
-    return false;
   }
 
   public static boolean renameWithPerms(FileSystem fs, Path sourcePath,
@@ -687,10 +645,8 @@ public final class FileUtils {
     } else {
       //rename the directory
       if (fs.rename(sourcePath, destPath)) {
-        HadoopShims shims = ShimLoader.getHadoopShims();
-        HdfsFileStatus fullFileStatus = shims.getFullFileStatus(conf, fs, destPath.getParent());
         try {
-          shims.setFullFileStatus(conf, fullFileStatus, fs, destPath);
+          HdfsUtils.setFullFileStatus(conf, new HdfsUtils.HadoopFileStatus(conf, fs, destPath.getParent()), fs, destPath, true);
         } catch (Exception e) {
           LOG.warn("Error setting permissions or group of " + destPath, e);
         }
@@ -713,7 +669,7 @@ public final class FileUtils {
     //FileSystem api doesn't have a .equals() function implemented, so using
     //the uri for comparison. FileSystem already uses uri+Configuration for
     //equality in its CACHE .
-    //Once equality has been added in HDFS-4321, we should make use of it
+    //Once equality has been added in HDFS-9159, we should make use of it
     return fs1.getUri().equals(fs2.getUri());
   }
 
@@ -813,6 +769,9 @@ public final class FileUtils {
   /**
    * create temporary file and register it to delete-on-exit hook.
    * File.deleteOnExit is not used for possible memory leakage.
+   *
+   * Make sure to use {@link #deleteTmpFile(File)} after the file is no longer required,
+   * and has been deleted to avoid a memory leak.
    */
   public static File createTempFile(String lScratchDir, String prefix, String suffix) throws IOException {
     File tmpDir = lScratchDir == null ? null : new File(lScratchDir);
@@ -892,4 +851,118 @@ public final class FileUtils {
     }
     return false;
   }
+  
+  
+  /**
+   * Return whenever all paths in the collection are schemaless
+   * 
+   * @param paths
+   * @return
+   */
+  public static boolean pathsContainNoScheme(Collection<Path> paths) {
+    for( Path path  : paths){
+      if(path.toUri().getScheme() != null){
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Returns the deepest candidate path for the given path.
+   * 
+   * prioritizes on paths including schema / then includes matches without schema
+   * 
+   * @param path
+   * @param candidates  the candidate paths
+   * @return
+   */
+  public static Path getParentRegardlessOfScheme(Path path, Collection<Path> candidates) {
+    Path schemalessPath = Path.getPathWithoutSchemeAndAuthority(path);
+    
+    for(;path!=null && schemalessPath!=null; path=path.getParent(),schemalessPath=schemalessPath.getParent()){
+      if(candidates.contains(path))
+        return path;
+      if(candidates.contains(schemalessPath))
+        return schemalessPath;
+    }
+    // exception?
+    return null;
+  }
+
+  /**
+   * Checks whenever path is inside the given subtree
+   * 
+   * return true iff
+   *  * path = subtree
+   *  * subtreeContains(path,d) for any descendant of the subtree node
+   * @param path    the path in question
+   * @param subtree
+   * 
+   * @return
+   */
+  public static boolean isPathWithinSubtree(Path path, Path subtree) {
+    while(path!=null){
+      if(subtree.equals(path)){
+        return true;
+      }
+      path=path.getParent();
+    }
+    return false;
+  }
+
+  /**
+   * Get the URI of the path. Assume to be local file system if no scheme.
+   */
+  public static URI getURI(String path) throws URISyntaxException {
+    if (path == null) {
+      return null;
+    }
+
+    URI uri = new URI(path);
+    if (uri.getScheme() == null) {
+      // if no scheme in the path, we assume it's file on local fs.
+      uri = new File(path).toURI();
+    }
+
+    return uri;
+  }
+
+  /**
+   * Given a path string, get all the jars from the folder or the files themselves.
+   *
+   * @param pathString  the path string is the comma-separated path list
+   * @return            the list of the file names in the format of URI formats.
+   */
+  public static Set<String> getJarFilesByPath(String pathString, Configuration conf) {
+    Set<String> result = new HashSet<String>();
+    if (pathString == null || org.apache.commons.lang.StringUtils.isBlank(pathString)) {
+        return result;
+    }
+
+    String[] paths = pathString.split(",");
+    for(String path : paths) {
+      try {
+        Path p = new Path(getURI(path));
+        FileSystem fs = p.getFileSystem(conf);
+        if (!fs.exists(p)) {
+          LOG.error("The jar file path " + path + " doesn't exist");
+          continue;
+        }
+        if (fs.isDirectory(p)) {
+          // add all jar files under the folder
+          FileStatus[] files = fs.listStatus(p, new GlobFilter("*.jar"));
+          for(FileStatus file : files) {
+            result.add(file.getPath().toUri().toString());
+          }
+        } else {
+          result.add(p.toUri().toString());
+        }
+      } catch(URISyntaxException | IOException e) {
+        LOG.error("Invalid file path " + path, e);
+      }
+    }
+    return result;
+  }
+
 }

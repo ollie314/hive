@@ -134,6 +134,28 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
     batch.selectedInUse = saveSelectedInUse;
   }
 
+  protected void doSmallTableDeserializeRow(VectorizedRowBatch batch, int batchIndex,
+      ByteSegmentRef byteSegmentRef, VectorMapJoinHashMapResult hashMapResult)
+          throws HiveException {
+
+    byte[] bytes = byteSegmentRef.getBytes();
+    int offset = (int) byteSegmentRef.getOffset();
+    int length = byteSegmentRef.getLength();
+    smallTableVectorDeserializeRow.setBytes(bytes, offset, length);
+
+    try {
+      // Our hash tables are immutable.  We can safely do by reference STRING, CHAR/VARCHAR, etc.
+      smallTableVectorDeserializeRow.deserializeByRef(batch, batchIndex);
+    } catch (Exception e) {
+      throw new HiveException(
+          "\nHashMapResult detail: " +
+              hashMapResult.getDetailedHashMapResultPositionString() +
+          "\nDeserializeRead detail: " +
+              smallTableVectorDeserializeRow.getDetailedReadPositionString(),
+          e);
+    }
+  }
+
   //------------------------------------------------------------------------------------------------
 
   /*
@@ -180,13 +202,8 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
       }
 
       if (smallTableVectorDeserializeRow != null) {
-
-        byte[] bytes = byteSegmentRef.getBytes();
-        int offset = (int) byteSegmentRef.getOffset();
-        int length = byteSegmentRef.getLength();
-        smallTableVectorDeserializeRow.setBytes(bytes, offset, length);
-
-        smallTableVectorDeserializeRow.deserializeByValue(batch, batchIndex);
+        doSmallTableDeserializeRow(batch, batchIndex,
+            byteSegmentRef, hashMapResult);
       }
 
       // VectorizedBatchUtil.debugDisplayOneRow(batch, batchIndex, "generateHashMapResultSingleValue big table");
@@ -248,12 +265,8 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
 
         if (smallTableVectorDeserializeRow != null) {
 
-          byte[] bytes = byteSegmentRef.getBytes();
-          int offset = (int) byteSegmentRef.getOffset();
-          int length = byteSegmentRef.getLength();
-          smallTableVectorDeserializeRow.setBytes(bytes, offset, length);
-
-          smallTableVectorDeserializeRow.deserializeByValue(overflowBatch, overflowBatch.size);
+          doSmallTableDeserializeRow(overflowBatch, overflowBatch.size,
+              byteSegmentRef, hashMapResult);
         }
 
         // VectorizedBatchUtil.debugDisplayOneRow(overflowBatch, overflowBatch.size, "generateHashMapResultMultiValue overflow");
@@ -292,19 +305,14 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
     }
 
     ByteSegmentRef byteSegmentRef = hashMapResult.first();
-    while (true) {
+    while (byteSegmentRef != null) {
 
       // Fill up as much of the overflow batch as possible with small table values.
       while (byteSegmentRef != null) {
 
         if (smallTableVectorDeserializeRow != null) {
-
-          byte[] bytes = byteSegmentRef.getBytes();
-          int offset = (int) byteSegmentRef.getOffset();
-          int length = byteSegmentRef.getLength();
-          smallTableVectorDeserializeRow.setBytes(bytes, offset, length);
-
-          smallTableVectorDeserializeRow.deserializeByValue(overflowBatch, overflowBatch.DEFAULT_SIZE);
+          doSmallTableDeserializeRow(overflowBatch, overflowBatch.size,
+              byteSegmentRef, hashMapResult);
         }
 
         overflowBatch.size++;
@@ -348,10 +356,10 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
         }
       }
 
-      if (hashMapResult.isEof()) {
+      byteSegmentRef = hashMapResult.next();
+      if (byteSegmentRef == null) {
         break;
       }
-      byteSegmentRef = hashMapResult.next();
 
       // Get ready for a another round of small table values.
       overflowBatch.reset();
@@ -435,7 +443,9 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
 
     bigTableVectorDeserializeRow =
         new VectorDeserializeRow<LazyBinaryDeserializeRead>(
-            new LazyBinaryDeserializeRead(bigTableTypeInfos));
+            new LazyBinaryDeserializeRead(
+                bigTableTypeInfos,
+                /* useExternalBuffer */ true));
 
     bigTableVectorDeserializeRow.init(noNullsProjection);
   }
@@ -507,6 +517,7 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
     vectorMapJoinHashTable = VectorMapJoinOptimizedCreateHashTable.createHashTable(conf,
         smallTable);
     needHashTableSetup = true;
+    LOG.info("Created " + vectorMapJoinHashTable.getClass().getSimpleName() + " from " + this.getClass().getSimpleName());
 
     if (isLogDebugEnabled) {
       LOG.debug(CLASS_NAME + " reloadHashTable!");
@@ -542,14 +553,18 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
         int offset = bigTable.currentOffset();
         int length = bigTable.currentLength();
 
-//      LOG.debug(CLASS_NAME + " reProcessBigTable serialized row #" + rowCount + ", offset " + offset + ", length " + length);
-
         bigTableVectorDeserializeRow.setBytes(bytes, offset, length);
-        bigTableVectorDeserializeRow.deserializeByValue(spillReplayBatch, spillReplayBatch.size);
+        try {
+          bigTableVectorDeserializeRow.deserialize(spillReplayBatch, spillReplayBatch.size);
+        } catch (Exception e) {
+          throw new HiveException(
+              "\nDeserializeRead detail: " +
+                  bigTableVectorDeserializeRow.getDetailedReadPositionString(),
+              e);
+        }
         spillReplayBatch.size++;
 
         if (spillReplayBatch.size == VectorizedRowBatch.DEFAULT_SIZE) {
-          // LOG.debug("reProcessBigTable going to call process with spillReplayBatch.size " + spillReplayBatch.size + " rows");
           process(spillReplayBatch, posBigTable); // call process once we have a full batch
           spillReplayBatch.reset();
           batchCount++;
@@ -557,7 +572,6 @@ public abstract class VectorMapJoinGenerateResultOperator extends VectorMapJoinC
       }
       // Process the row batch that has less than DEFAULT_SIZE rows
       if (spillReplayBatch.size > 0) {
-        // LOG.debug("reProcessBigTable going to call process with spillReplayBatch.size " + spillReplayBatch.size + " rows");
         process(spillReplayBatch, posBigTable);
         spillReplayBatch.reset();
         batchCount++;

@@ -52,6 +52,8 @@ import org.apache.hive.service.rpc.thrift.TGetCatalogsReq;
 import org.apache.hive.service.rpc.thrift.TGetCatalogsResp;
 import org.apache.hive.service.rpc.thrift.TGetColumnsReq;
 import org.apache.hive.service.rpc.thrift.TGetColumnsResp;
+import org.apache.hive.service.rpc.thrift.TGetCrossReferenceReq;
+import org.apache.hive.service.rpc.thrift.TGetCrossReferenceResp;
 import org.apache.hive.service.rpc.thrift.TGetDelegationTokenReq;
 import org.apache.hive.service.rpc.thrift.TGetDelegationTokenResp;
 import org.apache.hive.service.rpc.thrift.TGetFunctionsReq;
@@ -60,6 +62,8 @@ import org.apache.hive.service.rpc.thrift.TGetInfoReq;
 import org.apache.hive.service.rpc.thrift.TGetInfoResp;
 import org.apache.hive.service.rpc.thrift.TGetOperationStatusReq;
 import org.apache.hive.service.rpc.thrift.TGetOperationStatusResp;
+import org.apache.hive.service.rpc.thrift.TGetPrimaryKeysReq;
+import org.apache.hive.service.rpc.thrift.TGetPrimaryKeysResp;
 import org.apache.hive.service.rpc.thrift.TGetResultSetMetadataReq;
 import org.apache.hive.service.rpc.thrift.TGetResultSetMetadataResp;
 import org.apache.hive.service.rpc.thrift.TGetSchemasReq;
@@ -162,34 +166,38 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
     }
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#executeStatement(org.apache.hive.service.cli.SessionHandle, java.lang.String, java.util.Map)
-   */
   @Override
   public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
-      Map<String, String> confOverlay)
-          throws HiveSQLException {
-    return executeStatementInternal(sessionHandle, statement, confOverlay, false);
+      Map<String, String> confOverlay) throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, false, 0);
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.hive.service.cli.ICLIService#executeStatementAsync(org.apache.hive.service.cli.SessionHandle, java.lang.String, java.util.Map)
-   */
+  @Override
+  public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, false, queryTimeout);
+  }
+
   @Override
   public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
-      Map<String, String> confOverlay)
-          throws HiveSQLException {
-    return executeStatementInternal(sessionHandle, statement, confOverlay, true);
+      Map<String, String> confOverlay) throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, true, 0);
+  }
+
+  @Override
+  public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+      Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+    return executeStatementInternal(sessionHandle, statement, confOverlay, true, queryTimeout);
   }
 
   private OperationHandle executeStatementInternal(SessionHandle sessionHandle, String statement,
-      Map<String, String> confOverlay, boolean isAsync)
-          throws HiveSQLException {
+      Map<String, String> confOverlay, boolean isAsync, long queryTimeout) throws HiveSQLException {
     try {
       TExecuteStatementReq req =
           new TExecuteStatementReq(sessionHandle.toTSessionHandle(), statement);
       req.setConfOverlay(confOverlay);
       req.setRunAsync(isAsync);
+      req.setQueryTimeout(queryTimeout);
       TExecuteStatementResp resp = cliService.ExecuteStatement(req);
       checkStatus(resp.getStatus());
       TProtocolVersion protocol = sessionHandle.getProtocolVersion();
@@ -362,7 +370,7 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
         opException = new HiveSQLException(resp.getErrorMessage(), resp.getSqlState(), resp.getErrorCode());
       }
       return new OperationStatus(opState, resp.getTaskStatus(), resp.getOperationStarted(),
-        resp.getOperationCompleted(), opException);
+        resp.getOperationCompleted(), resp.isHasResultSet(), opException);
     } catch (HiveSQLException e) {
       throw e;
     } catch (Exception e) {
@@ -488,6 +496,49 @@ public class ThriftCLIServiceClient extends CLIServiceClient {
         cliService.RenewDelegationToken(cancelReq);
       checkStatus(renewResp.getStatus());
       return;
+    } catch (Exception e) {
+      throw new HiveSQLException(e);
+    }
+  }
+
+  @Override
+  public OperationHandle getPrimaryKeys(SessionHandle sessionHandle,
+    String catalog, String schema, String table) throws HiveSQLException {
+    try {
+      TGetPrimaryKeysReq req = new TGetPrimaryKeysReq(sessionHandle.toTSessionHandle());
+      req.setCatalogName(catalog);
+      req.setSchemaName(schema);
+      req.setTableName(table);
+      TGetPrimaryKeysResp resp = cliService.GetPrimaryKeys(req);
+      checkStatus(resp.getStatus());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
+    } catch (HiveSQLException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new HiveSQLException(e);
+    }
+  }
+
+  @Override
+  public OperationHandle getCrossReference(SessionHandle sessionHandle,
+		String primaryCatalog, String primarySchema, String primaryTable,
+		String foreignCatalog, String foreignSchema, String foreignTable)
+		throws HiveSQLException {
+    try {
+      TGetCrossReferenceReq req = new TGetCrossReferenceReq(sessionHandle.toTSessionHandle());
+      req.setParentCatalogName(primaryCatalog);
+      req.setParentSchemaName(primarySchema);
+      req.setParentTableName(primaryTable);
+      req.setForeignCatalogName(foreignCatalog);
+      req.setForeignSchemaName(foreignSchema);
+      req.setForeignTableName(foreignTable);
+      TGetCrossReferenceResp resp = cliService.GetCrossReference(req);
+      checkStatus(resp.getStatus());
+      TProtocolVersion protocol = sessionHandle.getProtocolVersion();
+      return new OperationHandle(resp.getOperationHandle(), protocol);
+    } catch (HiveSQLException e) {
+      throw e;
     } catch (Exception e) {
       throw new HiveSQLException(e);
     }

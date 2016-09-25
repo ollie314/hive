@@ -34,79 +34,6 @@ SELECT x.key, z.value, y.value
 FROM src1 x JOIN src y ON (x.key = y.key) 
 JOIN srcpart z ON (x.value = z.value and z.ds='2008-04-08' and z.hr=11)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_JOIN
-            TOK_TABREF
-               TOK_TABNAME
-                  src1
-               x
-            TOK_TABREF
-               TOK_TABNAME
-                  src
-               y
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     x
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     y
-                  key
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            z
-         and
-            and
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        x
-                     value
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     value
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     ds
-                  '2008-04-08'
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     z
-                  hr
-               11
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dest_j1
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  x
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  z
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  y
-               value
-
-
 STAGE DEPENDENCIES:
   Stage-3 is a root stage
   Stage-1 depends on stages: Stage-3
@@ -148,7 +75,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -168,7 +95,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -218,7 +145,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -238,7 +165,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -314,15 +241,20 @@ STAGE PLANS:
                                   input format: org.apache.hadoop.mapred.TextInputFormat
                                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                                   properties:
+                                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                                     bucket_count -1
                                     columns key,value,val2
                                     columns.comments 
                                     columns.types string:string:string
 #### A masked pattern was here ####
                                     name default.dest_j1
+                                    numFiles 0
+                                    numRows 0
+                                    rawDataSize 0
                                     serialization.ddl struct dest_j1 { string key, string value, string val2}
                                     serialization.format 1
                                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                                    totalSize 0
 #### A masked pattern was here ####
                                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                                   name: default.dest_j1
@@ -343,7 +275,7 @@ STAGE PLANS:
                     ds 2008-04-08
                     hr 11
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -392,15 +324,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value,val2
                 columns.comments 
                 columns.types string:string:string
 #### A masked pattern was here ####
                 name default.dest_j1
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct dest_j1 { string key, string value, string val2}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.dest_j1
@@ -539,79 +476,6 @@ FROM src w JOIN src1 x ON (x.value = w.value)
 JOIN src y ON (x.key = y.key) 
 JOIN src1 z ON (x.key = z.key)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_JOIN
-            TOK_JOIN
-               TOK_TABREF
-                  TOK_TABNAME
-                     src
-                  w
-               TOK_TABREF
-                  TOK_TABNAME
-                     src1
-                  x
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        x
-                     value
-                  .
-                     TOK_TABLE_OR_COL
-                        w
-                     value
-            TOK_TABREF
-               TOK_TABNAME
-                  src
-               y
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     x
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     y
-                  key
-         TOK_TABREF
-            TOK_TABNAME
-               src1
-            z
-         =
-            .
-               TOK_TABLE_OR_COL
-                  x
-               key
-            .
-               TOK_TABLE_OR_COL
-                  z
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dest_j1
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  x
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  z
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  y
-               value
-
-
 STAGE DEPENDENCIES:
   Stage-4 is a root stage
   Stage-3 depends on stages: Stage-4
@@ -627,7 +491,7 @@ STAGE PLANS:
         Map 2 
             Map Operator Tree:
                 TableScan
-                  alias: x
+                  alias: z
                   Statistics: Num rows: 25 Data size: 191 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -654,7 +518,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -674,7 +538,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -693,7 +557,7 @@ STAGE PLANS:
                     name: default.src1
                   name: default.src1
             Truncated Path -> Alias:
-              /src1 [x]
+              /src1 [z]
 
   Stage: Stage-3
     Spark
@@ -740,7 +604,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -760,7 +624,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -783,7 +647,7 @@ STAGE PLANS:
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: w
+                  alias: y
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -810,7 +674,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -830,7 +694,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -849,7 +713,7 @@ STAGE PLANS:
                     name: default.src
                   name: default.src
             Truncated Path -> Alias:
-              /src [w]
+              /src [y]
 
   Stage: Stage-1
     Spark
@@ -937,7 +801,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -957,7 +821,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -1028,8 +892,8 @@ POSTHOOK: Input: default@src
 POSTHOOK: Input: default@src1
 POSTHOOK: Output: default@dest_j1
 POSTHOOK: Lineage: dest_j1.key SIMPLE [(src1)x.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: dest_j1.val2 SIMPLE [(src)w.FieldSchema(name:value, type:string, comment:default), ]
-POSTHOOK: Lineage: dest_j1.value SIMPLE [(src1)x.FieldSchema(name:value, type:string, comment:default), ]
+POSTHOOK: Lineage: dest_j1.val2 SIMPLE [(src)y.FieldSchema(name:value, type:string, comment:default), ]
+POSTHOOK: Lineage: dest_j1.value SIMPLE [(src1)z.FieldSchema(name:value, type:string, comment:default), ]
 PREHOOK: query: select * from dest_j1
 PREHOOK: type: QUERY
 PREHOOK: Input: default@dest_j1
@@ -1135,98 +999,6 @@ SELECT res.key, z.value, res.value
 FROM (select x.key, x.value from src1 x JOIN src y ON (x.key = y.key)) res 
 JOIN srcpart z ON (res.value = z.value and z.ds='2008-04-08' and z.hr=11)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_SUBQUERY
-            TOK_QUERY
-               TOK_FROM
-                  TOK_JOIN
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src1
-                        x
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src
-                        y
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           key
-                        .
-                           TOK_TABLE_OR_COL
-                              y
-                           key
-               TOK_INSERT
-                  TOK_DESTINATION
-                     TOK_DIR
-                        TOK_TMP_FILE
-                  TOK_SELECT
-                     TOK_SELEXPR
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           key
-                     TOK_SELEXPR
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           value
-            res
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            z
-         and
-            and
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        res
-                     value
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     value
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     ds
-                  '2008-04-08'
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     z
-                  hr
-               11
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dest_j2
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  res
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  z
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  res
-               value
-
-
 STAGE DEPENDENCIES:
   Stage-3 is a root stage
   Stage-1 depends on stages: Stage-3
@@ -1271,7 +1043,7 @@ STAGE PLANS:
                     ds 2008-04-08
                     hr 11
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -1340,7 +1112,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -1360,7 +1132,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -1440,15 +1212,20 @@ STAGE PLANS:
                                     input format: org.apache.hadoop.mapred.TextInputFormat
                                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                                     properties:
+                                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                                       bucket_count -1
                                       columns key,value,val2
                                       columns.comments 
                                       columns.types string:string:string
 #### A masked pattern was here ####
                                       name default.dest_j2
+                                      numFiles 0
+                                      numRows 0
+                                      rawDataSize 0
                                       serialization.ddl struct dest_j2 { string key, string value, string val2}
                                       serialization.format 1
                                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                                      totalSize 0
 #### A masked pattern was here ####
                                     serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                                     name: default.dest_j2
@@ -1466,7 +1243,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -1486,7 +1263,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -1516,15 +1293,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value,val2
                 columns.comments 
                 columns.types string:string:string
 #### A masked pattern was here ####
                 name default.dest_j2
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct dest_j2 { string key, string value, string val2}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.dest_j2
@@ -1661,98 +1443,6 @@ SELECT res.key, z.value, res.value
 FROM (select x.key, x.value from src1 x LEFT OUTER JOIN src y ON (x.key = y.key)) res 
 JOIN srcpart z ON (res.value = z.value and z.ds='2008-04-08' and z.hr=11)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_SUBQUERY
-            TOK_QUERY
-               TOK_FROM
-                  TOK_LEFTOUTERJOIN
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src1
-                        x
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src
-                        y
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           key
-                        .
-                           TOK_TABLE_OR_COL
-                              y
-                           key
-               TOK_INSERT
-                  TOK_DESTINATION
-                     TOK_DIR
-                        TOK_TMP_FILE
-                  TOK_SELECT
-                     TOK_SELEXPR
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           key
-                     TOK_SELEXPR
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           value
-            res
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            z
-         and
-            and
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        res
-                     value
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     value
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        z
-                     ds
-                  '2008-04-08'
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     z
-                  hr
-               11
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dest_j2
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  res
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  z
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  res
-               value
-
-
 STAGE DEPENDENCIES:
   Stage-3 is a root stage
   Stage-1 depends on stages: Stage-3
@@ -1797,7 +1487,7 @@ STAGE PLANS:
                     ds 2008-04-08
                     hr 11
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -1862,7 +1552,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -1882,7 +1572,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'
@@ -1993,7 +1683,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -2013,7 +1703,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'

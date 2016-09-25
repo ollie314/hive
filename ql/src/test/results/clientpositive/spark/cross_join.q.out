@@ -1,4 +1,4 @@
-Warning: Shuffle Join JOIN[7][tables = [$hdt$_0, $hdt$_1]] in Work 'Reducer 2' is a cross product
+Warning: Shuffle Join JOIN[6][tables = [$hdt$_0, $hdt$_1]] in Work 'Reducer 2' is a cross product
 PREHOOK: query: -- current
 explain select src.key from src join src src2
 PREHOOK: type: QUERY
@@ -32,7 +32,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     Statistics: Num rows: 500 Data size: 2000 Basic stats: COMPLETE Column stats: COMPLETE
@@ -48,10 +48,10 @@ STAGE PLANS:
                   0 
                   1 
                 outputColumnNames: _col0
-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                 File Output Operator
                   compressed: false
-                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                   table:
                       input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                       output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -63,7 +63,7 @@ STAGE PLANS:
       Processor Tree:
         ListSink
 
-Warning: Shuffle Join JOIN[7][tables = [$hdt$_0, $hdt$_1]] in Work 'Reducer 2' is a cross product
+Warning: Shuffle Join JOIN[6][tables = [$hdt$_0, $hdt$_1]] in Work 'Reducer 2' is a cross product
 PREHOOK: query: -- ansi cross join
 explain select src.key from src cross join src src2
 PREHOOK: type: QUERY
@@ -97,7 +97,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     Statistics: Num rows: 500 Data size: 2000 Basic stats: COMPLETE Column stats: COMPLETE
@@ -113,10 +113,10 @@ STAGE PLANS:
                   0 
                   1 
                 outputColumnNames: _col0
-                Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                 File Output Operator
                   compressed: false
-                  Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                   table:
                       input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                       output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -165,7 +165,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
                   Filter Operator
                     predicate: key is not null (type: boolean)
@@ -203,7 +203,7 @@ STAGE PLANS:
       Processor Tree:
         ListSink
 
-Warning: Map Join MAPJOIN[10][bigTable=?] in task 'Stage-1:MAPRED' is a cross product
+Warning: Map Join MAPJOIN[9][bigTable=?] in task 'Stage-1:MAPRED' is a cross product
 PREHOOK: query: explain select src.key from src join src src2
 PREHOOK: type: QUERY
 POSTHOOK: query: explain select src.key from src join src src2
@@ -221,7 +221,7 @@ STAGE PLANS:
         Map 2 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     Statistics: Num rows: 500 Data size: 2000 Basic stats: COMPLETE Column stats: COMPLETE
@@ -254,10 +254,10 @@ STAGE PLANS:
                       outputColumnNames: _col0
                       input vertices:
                         1 Map 2
-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                      Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                       File Output Operator
                         compressed: false
-                        Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                        Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                         table:
                             input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                             output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -271,7 +271,7 @@ STAGE PLANS:
       Processor Tree:
         ListSink
 
-Warning: Map Join MAPJOIN[10][bigTable=?] in task 'Stage-1:MAPRED' is a cross product
+Warning: Map Join MAPJOIN[9][bigTable=?] in task 'Stage-1:MAPRED' is a cross product
 PREHOOK: query: explain select src.key from src cross join src src2
 PREHOOK: type: QUERY
 POSTHOOK: query: explain select src.key from src cross join src src2
@@ -289,7 +289,7 @@ STAGE PLANS:
         Map 2 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     Statistics: Num rows: 500 Data size: 2000 Basic stats: COMPLETE Column stats: COMPLETE
@@ -322,10 +322,10 @@ STAGE PLANS:
                       outputColumnNames: _col0
                       input vertices:
                         1 Map 2
-                      Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                      Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                       File Output Operator
                         compressed: false
-                        Statistics: Num rows: 550 Data size: 5843 Basic stats: COMPLETE Column stats: NONE
+                        Statistics: Num rows: 250000 Data size: 3906000 Basic stats: COMPLETE Column stats: NONE
                         table:
                             input format: org.apache.hadoop.mapred.SequenceFileInputFormat
                             output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
@@ -356,7 +356,7 @@ STAGE PLANS:
         Map 2 
             Map Operator Tree:
                 TableScan
-                  alias: src
+                  alias: src2
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
                   Filter Operator
                     predicate: key is not null (type: boolean)

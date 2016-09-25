@@ -92,6 +92,11 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hive.beeline.cli.CliOptionsProcessor;
+import org.apache.hive.common.util.ShutdownHookManager;
+import org.apache.thrift.transport.TTransportException;
+
+import org.apache.hive.jdbc.Utils;
+import org.apache.hive.jdbc.Utils.JdbcConnectionParams;
 
 /**
  * A console SQL shell with command completion.
@@ -134,12 +139,12 @@ public class BeeLine implements Closeable {
   private String currentDatabase = null;
 
   private History history;
+  // Indicates if this instance of beeline is running in compatibility mode, or beeline mode
   private boolean isBeeLine = true;
 
   private static final Options options = new Options();
 
   public static final String BEELINE_DEFAULT_JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
-  public static final String BEELINE_DEFAULT_JDBC_URL = "jdbc:hive2://";
   public static final String DEFAULT_DATABASE_NAME = "default";
 
   private static final String SCRIPT_OUTPUT_PREFIX = ">>>";
@@ -151,6 +156,7 @@ public class BeeLine implements Closeable {
 
   private static final String HIVE_VAR_PREFIX = "--hivevar";
   private static final String HIVE_CONF_PREFIX = "--hiveconf";
+  private static final String PROP_FILE_PREFIX = "--property-file";
   static final String PASSWD_MASK = "[passwd stripped]";
 
   private final Map<Object, Object> formats = map(new Object[] {
@@ -297,6 +303,12 @@ public class BeeLine implements Closeable {
         .withDescription("the JDBC URL to connect to")
         .create('u'));
 
+    // -r
+    options.addOption(OptionBuilder
+        .withLongOpt("reconnect")
+        .withDescription("Reconnect to last saved connect url (in conjunction with !save)")
+        .create('r'));
+
     // -n <username>
     options.addOption(OptionBuilder
         .hasArg()
@@ -369,6 +381,13 @@ public class BeeLine implements Closeable {
         .withArgName("property=value")
         .withLongOpt("hiveconf")
         .withDescription("Use value for given property")
+        .create());
+
+    // --property-file <file>
+    options.addOption(OptionBuilder
+        .hasArg()
+        .withLongOpt("property-file")
+        .withDescription("the file to read configuration properties from")
         .create());
   }
 
@@ -617,7 +636,8 @@ public class BeeLine implements Closeable {
 
     @Override
     protected void processOption(final String arg, final ListIterator iter) throws  ParseException {
-      if ((arg.startsWith("--")) && !(arg.equals(HIVE_VAR_PREFIX) || (arg.equals(HIVE_CONF_PREFIX)) || (arg.equals("--help")))) {
+      if ((arg.startsWith("--")) && !(arg.equals(HIVE_VAR_PREFIX) || (arg.equals(HIVE_CONF_PREFIX))
+          || (arg.equals("--help") || (arg.equals(PROP_FILE_PREFIX))))) {
         String stripped = arg.substring(2, arg.length());
         String[] parts = split(stripped, "=");
         debug(loc("setting-prop", Arrays.asList(parts)));
@@ -695,7 +715,6 @@ public class BeeLine implements Closeable {
 
   int initArgs(String[] args) {
     List<String> commands = Collections.emptyList();
-    List<String> files = Collections.emptyList();
 
     CommandLine cl;
     BeelineParser beelineParser;
@@ -739,10 +758,19 @@ public class BeeLine implements Closeable {
       pass = cl.getOptionValue("p");
     }
     url = cl.getOptionValue("u");
+    if ((url == null) && cl.hasOption("reconnect")){
+      // If url was not specified with -u, but -r was present, use that.
+      url = getOpts().getLastConnectedUrl();
+    }
     getOpts().setInitFiles(cl.getOptionValues("i"));
     getOpts().setScriptFile(cl.getOptionValue("f"));
     if (cl.getOptionValues('e') != null) {
       commands = Arrays.asList(cl.getOptionValues('e'));
+    }
+
+    if (!commands.isEmpty() && getOpts().getScriptFile() != null) {
+      System.err.println("The '-e' and '-f' options cannot be specified simultaneously");
+      return 1;
     }
 
     // TODO: temporary disable this for easier debugging
@@ -756,15 +784,32 @@ public class BeeLine implements Closeable {
     */
 
     if (url != null) {
+      if (user == null) {
+        user = Utils.parsePropertyFromUrl(url, JdbcConnectionParams.AUTH_USER);
+      }
+
+      if (pass == null) {
+        pass = Utils.parsePropertyFromUrl(url, JdbcConnectionParams.AUTH_PASSWD);
+      }
+
       String com = constructCmd(url, user, pass, driver, false);
       String comForDebug = constructCmd(url, user, pass, driver, true);
       debug("issuing: " + comForDebug);
       dispatch(com);
     }
 
-    // now load properties files
-    for (Iterator<String> i = files.iterator(); i.hasNext();) {
-      dispatch("!properties " + i.next());
+    // load property file
+    String propertyFile = cl.getOptionValue("property-file");
+    if (propertyFile != null) {
+      try {
+        this.consoleReader = new ConsoleReader();
+      } catch (IOException e) {
+        handleException(e);
+      }
+      if (!dispatch("!properties " + propertyFile)) {
+        exit = true;
+        return 1;
+      }
     }
 
     int code = 0;
@@ -884,7 +929,7 @@ public class BeeLine implements Closeable {
   }
 
   private int embeddedConnect() {
-    if (!execCommandWithPrefix("!connect " + BEELINE_DEFAULT_JDBC_URL + " '' ''")) {
+    if (!execCommandWithPrefix("!connect " + Utils.URL_PREFIX + " '' ''")) {
       return ERRNO_OTHER;
     } else {
       return ERRNO_OK;
@@ -1032,7 +1077,7 @@ public class BeeLine implements Closeable {
     }
 
     // add shutdown hook to flush the history to history file
-    Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+    ShutdownHookManager.addShutdownHook(new Runnable() {
         @Override
         public void run() {
             History h = consoleReader.getHistory();
@@ -1044,7 +1089,7 @@ public class BeeLine implements Closeable {
                 }
             }
         }
-    }));
+    });
 
     consoleReader.addCompleter(new BeeLineCompleter(this));
     return consoleReader;
@@ -1389,18 +1434,17 @@ public class BeeLine implements Closeable {
     HiveConf conf = getCommands().getHiveConf(true);
     prompt = conf.getVar(HiveConf.ConfVars.CLIPROMPT);
     prompt = getCommands().substituteVariables(conf, prompt);
-    return prompt + getFormattedDb(conf) + "> ";
+    return prompt + getFormattedDb() + "> ";
   }
 
   /**
    * Retrieve the current database name string to display, based on the
    * configuration value.
    *
-   * @param conf storing whether or not to show current db
    * @return String to show user for current db value
    */
-  String getFormattedDb(HiveConf conf) {
-    if (!HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIPRINTCURRENTDB)) {
+  String getFormattedDb() {
+    if (!getOpts().getShowDbInPrompt()) {
       return "";
     }
     String currDb = getCurrentDatabase();
@@ -1418,10 +1462,9 @@ public class BeeLine implements Closeable {
     } else {
       String printClosed = getDatabaseConnection().isClosed() ? " (closed)" : "";
       return getPromptForBeeline(getDatabaseConnections().getIndex()
-          + ": " + getDatabaseConnection().getUrl()) + printClosed + "> ";
+          + ": " + getDatabaseConnection().getUrl()) + printClosed + getFormattedDb() + "> ";
     }
   }
-
 
   static String getPromptForBeeline(String url) {
     if (url == null || url.length() == 0) {
@@ -1438,7 +1481,6 @@ public class BeeLine implements Closeable {
     }
     return url;
   }
-
 
   /**
    * Try to obtain the current size of the specified {@link ResultSet} by jumping to the last row
@@ -1735,6 +1777,10 @@ public class BeeLine implements Closeable {
       return;
     }
 
+    if (e.getCause() instanceof TTransportException) {
+      error(loc("hs2-unavailable"));
+    }
+
     error(loc(e instanceof SQLWarning ? "Warning" : "Error",
         new Object[] {
             e.getMessage() == null ? "" : e.getMessage().trim(),
@@ -1978,10 +2024,14 @@ public class BeeLine implements Closeable {
 
     Rows rows;
 
-    if (getOpts().getIncremental()) {
-      rows = new IncrementalRows(this, rs);
+    if (f instanceof TableOutputFormat) {
+      if (getOpts().getIncremental()) {
+        rows = new IncrementalRowsWithNormalization(this, rs);
+      } else {
+        rows = new BufferedRows(this, rs);
+      }
     } else {
-      rows = new BufferedRows(this, rs);
+      rows = new IncrementalRows(this, rs);
     }
     return f.print(rows);
   }

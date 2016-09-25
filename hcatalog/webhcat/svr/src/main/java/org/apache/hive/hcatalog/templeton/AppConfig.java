@@ -24,17 +24,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.StringTokenizer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConfUtil;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.VersionInfo;
 import org.apache.hive.hcatalog.templeton.tool.JobState;
@@ -168,6 +166,7 @@ public class AppConfig extends Configuration {
    */
   public static final String HIVE_EXTRA_FILES = "templeton.hive.extra.files";
 
+  public static final String XSRF_FILTER_ENABLED = "templeton.xsrf.filter.enabled";
 
   private static final Logger LOG = LoggerFactory.getLogger(AppConfig.class);
 
@@ -201,14 +200,19 @@ public class AppConfig extends Configuration {
    * been installed.  We need pass some properties to that client to make sure it connects to the
    * right Metastore, configures Tez, etc.  Here we look for such properties in hive config,
    * and set a comma-separated list of key values in {@link #HIVE_PROPS_NAME}.
+   * The HIVE_CONF_HIDDEN_LIST should be handled separately too - this also should be copied from
+   * the hive config to the webhcat config if not defined there.
    * Note that the user may choose to set the same keys in HIVE_PROPS_NAME directly, in which case
    * those values should take precedence.
    */
   private void handleHiveProperties() {
     HiveConf hiveConf = new HiveConf();//load hive-site.xml from classpath
     List<String> interestingPropNames = Arrays.asList(
-      "hive.metastore.uris","hive.metastore.sasl.enabled",
-      "hive.metastore.execute.setugi","hive.execution.engine");
+        HiveConf.ConfVars.METASTOREURIS.varname,
+        HiveConf.ConfVars.METASTORE_USE_THRIFT_SASL.varname,
+        HiveConf.ConfVars.METASTORE_EXECUTE_SET_UGI.varname,
+        HiveConf.ConfVars.HIVE_EXECUTION_ENGINE.varname,
+        HiveConf.ConfVars.HIVE_CONF_HIDDEN_LIST.varname);
 
     //each items is a "key=value" format
     List<String> webhcatHiveProps = new ArrayList<String>(hiveProps());
@@ -233,6 +237,12 @@ public class AppConfig extends Configuration {
       hiveProps.append(hiveProps.length() > 0 ? "," : "").append(StringUtils.escapeString(whProp));
     }
     set(HIVE_PROPS_NAME, hiveProps.toString());
+    // Setting the hidden list
+    String hiddenProperties = hiveConf.get(HiveConf.ConfVars.HIVE_CONF_HIDDEN_LIST.varname);
+    if (this.get(HiveConf.ConfVars.HIVE_CONF_HIDDEN_LIST.varname) == null
+        && hiddenProperties!=null) {
+      set(HiveConf.ConfVars.HIVE_CONF_HIDDEN_LIST.varname, hiddenProperties);
+    }
   }
 
   private static void logConfigLoadAttempt(String path) {
@@ -246,46 +256,13 @@ public class AppConfig extends Configuration {
   private String dumpEnvironent() {
     StringBuilder sb = TempletonUtils.dumpPropMap("========WebHCat System.getenv()========", System.getenv());
     sb.append("START========WebHCat AppConfig.iterator()========: \n");
-    dumpConfig(this, sb);
+    HiveConfUtil.dumpConfig(this, sb);
     sb.append("END========WebHCat AppConfig.iterator()========: \n");
 
     sb.append(TempletonUtils.dumpPropMap("========WebHCat System.getProperties()========", System.getProperties()));
 
-    sb.append("START========\"new HiveConf()\"========\n");
-    HiveConf c = new HiveConf();
-    sb.append("hiveDefaultUrl=").append(c.getHiveDefaultLocation()).append('\n');
-    sb.append("hiveSiteURL=").append(HiveConf.getHiveSiteLocation()).append('\n');
-    sb.append("hiveServer2SiteUrl=").append(HiveConf.getHiveServer2SiteLocation()).append('\n');
-    sb.append("hivemetastoreSiteUrl=").append(HiveConf.getMetastoreSiteLocation()).append('\n');
-    dumpConfig(c, sb);
-    sb.append("END========\"new HiveConf()\"========\n");
+    sb.append(HiveConfUtil.dumpConfig(new HiveConf()));
     return sb.toString();
-  }
-  private static void dumpConfig(Configuration conf, StringBuilder sb) {
-    Iterator<Map.Entry<String, String>> configIter = conf.iterator();
-    List<Map.Entry<String, String>>configVals = new ArrayList<>();
-    while(configIter.hasNext()) {
-      configVals.add(configIter.next());
-    }
-    Collections.sort(configVals, new Comparator<Map.Entry<String, String>> () {
-      @Override
-      public int compare(Map.Entry<String, String> ent, Map.Entry<String, String> ent2) {
-        return ent.getKey().compareTo(ent2.getKey());
-      }
-    });
-    for(Map.Entry<String, String> entry : configVals) {
-      //use get() to make sure variable substitution works
-      if(entry.getKey().toLowerCase().contains("path")) {
-        StringTokenizer st = new StringTokenizer(conf.get(entry.getKey()), File.pathSeparator);
-        sb.append(entry.getKey()).append("=\n");
-        while(st.hasMoreTokens()) {
-          sb.append("    ").append(st.nextToken()).append(File.pathSeparator).append('\n');
-        }
-      }
-      else {
-        sb.append(entry.getKey()).append('=').append(conf.get(entry.getKey())).append('\n');
-      }
-    }
   }
 
   public JobsListOrder getListJobsOrder() {

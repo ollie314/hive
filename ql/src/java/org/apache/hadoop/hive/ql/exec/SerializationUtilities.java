@@ -38,6 +38,8 @@ import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
+import org.apache.hadoop.hive.ql.exec.tez.TezJobMonitor;
+import org.apache.hadoop.hive.ql.exec.vector.VectorFileSinkOperator;
 import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat;
 import org.apache.hadoop.hive.ql.io.RCFileInputFormat;
@@ -233,6 +235,7 @@ public class SerializationUtilities {
       kryo.register(TableDesc.class);
       kryo.register(UnionOperator.class);
       kryo.register(FileSinkOperator.class);
+      kryo.register(VectorFileSinkOperator.class);
       kryo.register(HiveIgnoreKeyTextOutputFormat.class);
       kryo.register(StandardConstantListObjectInspector.class);
       kryo.register(StandardConstantMapObjectInspector.class);
@@ -535,6 +538,28 @@ public class SerializationUtilities {
     LinkedList<Operator<?>> newOps = new LinkedList<>(result);
     while (!newOps.isEmpty()) {
       Operator<?> newOp = newOps.poll();
+      newOp.setCompilationOpContext(ctx);
+      List<Operator<?>> children = newOp.getChildOperators();
+      if (children != null) {
+        newOps.addAll(children);
+      }
+    }
+    return result;
+  }
+
+  public static List<Operator<?>> cloneOperatorTree(List<Operator<?>> roots, int indexForTezUnion) {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
+    CompilationOpContext ctx = roots.isEmpty() ? null : roots.get(0).getCompilationOpContext();
+    serializePlan(roots, baos, true);
+    @SuppressWarnings("unchecked")
+    List<Operator<?>> result =
+        deserializePlan(new ByteArrayInputStream(baos.toByteArray()),
+            roots.getClass(), true);
+    // Restore the context.
+    LinkedList<Operator<?>> newOps = new LinkedList<>(result);
+    while (!newOps.isEmpty()) {
+      Operator<?> newOp = newOps.poll();
+      newOp.setIndexForTezUnion(indexForTezUnion);
       newOp.setCompilationOpContext(ctx);
       List<Operator<?>> children = newOp.getChildOperators();
       if (children != null) {

@@ -107,23 +107,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- basicStatState: COMPLETE colStatState: PARTIAL
 explain extended select state from loc_orc_1d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_1d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -181,7 +164,7 @@ STAGE PLANS:
             partition values:
               year 2001
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -224,7 +207,7 @@ STAGE PLANS:
             partition values:
               year 2002
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -323,26 +306,6 @@ POSTHOOK: query: -- column statistics for __HIVE_DEFAULT_PARTITION__ is not supp
 -- basicStatState: COMPLETE colStatState: PARTIAL
 explain extended select state,locid from loc_orc_1d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_1d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               locid
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -400,7 +363,7 @@ STAGE PLANS:
             partition values:
               year 2001
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -443,7 +406,7 @@ STAGE PLANS:
             partition values:
               year 2002
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -558,23 +521,6 @@ PREHOOK: query: explain extended select state from loc_orc_1d
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select state from loc_orc_1d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_1d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -589,7 +535,7 @@ STAGE PLANS:
             partition values:
               year 2000
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -632,7 +578,7 @@ STAGE PLANS:
             partition values:
               year 2001
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -675,7 +621,7 @@ STAGE PLANS:
             partition values:
               year 2002
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -718,7 +664,7 @@ STAGE PLANS:
             partition values:
               year 2003
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -770,26 +716,6 @@ PREHOOK: query: explain extended select state,locid from loc_orc_1d
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select state,locid from loc_orc_1d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_1d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               locid
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -804,7 +730,7 @@ STAGE PLANS:
             partition values:
               year 2000
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -847,7 +773,7 @@ STAGE PLANS:
             partition values:
               year 2001
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -890,7 +816,7 @@ STAGE PLANS:
             partition values:
               year 2002
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -933,7 +859,7 @@ STAGE PLANS:
             partition values:
               year 2003
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"state":"true"}}
               bucket_count -1
               columns state,locid,zip
               columns.comments 
@@ -1059,23 +985,6 @@ PREHOOK: query: explain extended select state from loc_orc_2d
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select state from loc_orc_2d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_2d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -1267,7 +1176,7 @@ STAGE PLANS:
               year 2001
               zip 94086
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid
               columns.comments 
@@ -1487,7 +1396,7 @@ STAGE PLANS:
               year 2002
               zip 94087
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid
               columns.comments 
@@ -1583,26 +1492,6 @@ PREHOOK: query: explain extended select state,locid from loc_orc_2d
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select state,locid from loc_orc_2d
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            loc_orc_2d
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               state
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               locid
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -1794,7 +1683,7 @@ STAGE PLANS:
               year 2001
               zip 94086
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid
               columns.comments 
@@ -2014,7 +1903,7 @@ STAGE PLANS:
               year 2002
               zip 94087
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"state":"true","locid":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"locid":"true","state":"true"}}
               bucket_count -1
               columns state,locid
               columns.comments 

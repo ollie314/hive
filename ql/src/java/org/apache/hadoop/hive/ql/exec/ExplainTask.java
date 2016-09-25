@@ -39,8 +39,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.jsonexplain.JsonParser;
 import org.apache.hadoop.hive.common.jsonexplain.JsonParserFactory;
@@ -50,7 +48,6 @@ import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.optimizer.physical.StageIDsRearranger;
-import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.plan.Explain;
 import org.apache.hadoop.hive.ql.plan.Explain.Level;
@@ -68,6 +65,8 @@ import org.apache.hive.common.util.AnnotationUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ExplainTask implementation.
@@ -139,24 +138,12 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
       out = null;
     }
 
-    // Print out the parse AST
-    if (work.getAstStringTree() != null) {
-      String jsonAST = outputAST(work.getAstStringTree(), out, jsonOutput, 0);
-      if (out != null) {
-        out.println();
-      }
-
-      if (jsonOutput) {
-        outJSONObject.put("ABSTRACT SYNTAX TREE", jsonAST);
-      }
-    }
-
     if (work.getParseContext() != null) {
       if (out != null) {
         out.print("LOGICAL PLAN:");
       }
       JSONObject jsonPlan = outputMap(work.getParseContext().getTopOps(), true,
-                                      out, jsonOutput, work.getExtended(), 0);
+                                      out, work.getExtended(), jsonOutput, 0);
       if (out != null) {
         out.println();
       }
@@ -172,11 +159,11 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
   public JSONObject getJSONPlan(PrintStream out, ExplainWork work)
       throws Exception {
-    return getJSONPlan(out, work.getAstTree(), work.getRootTasks(), work.getFetchTask(),
+    return getJSONPlan(out, work.getRootTasks(), work.getFetchTask(),
                        work.isFormatted(), work.getExtended(), work.isAppendTaskType());
   }
 
-  public JSONObject getJSONPlan(PrintStream out, ASTNode ast, List<Task<?>> tasks, Task<?> fetchTask,
+  public JSONObject getJSONPlan(PrintStream out, List<Task<?>> tasks, Task<?> fetchTask,
       boolean jsonOutput, boolean isExtended, boolean appendTaskType) throws Exception {
 
     // If the user asked for a formatted output, dump the json output
@@ -185,18 +172,6 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
     if (jsonOutput) {
       out = null;
-    }
-
-    // Print out the parse AST
-    if (ast != null && isExtended) {
-      String jsonAST = outputAST(ast.dump(), out, jsonOutput, 0);
-      if (out != null) {
-        out.println();
-      }
-
-      if (jsonOutput) {
-        outJSONObject.put("ABSTRACT SYNTAX TREE", jsonAST);
-      }
     }
 
     List<Task> ordered = StageIDsRearranger.getExplainOrder(conf, tasks);
@@ -296,7 +271,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
           // Because of the implementation of the JsonParserFactory, we are sure
           // that we can get a TezJsonParser.
           JsonParser jsonParser = JsonParserFactory.getParser(conf);
-          work.setFormatted(true);
+          work.getConfig().setFormatted(true);
           JSONObject jsonPlan = getJSONPlan(out, work);
           if (work.getCboInfo() != null) {
             jsonPlan.put("cboInfo", work.getCboInfo());
@@ -307,8 +282,8 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
             // if there is anything wrong happen, we bail out.
             LOG.error("Running explain user level has problem: " + e.toString()
                 + ". Falling back to normal explain");
-            work.setFormatted(false);
-            work.setUserLevelExplain(false);
+            work.getConfig().setFormatted(false);
+            work.getConfig().setUserLevelExplain(false);
             jsonPlan = getJSONPlan(out, work);
           }
         } else {
@@ -337,7 +312,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
       throws Exception {
 
     BaseSemanticAnalyzer analyzer = work.getAnalyzer();
-    HiveOperation operation = SessionState.get().getHiveOperation();
+    HiveOperation operation = queryState.getHiveOperation();
 
     JSONObject object = new JSONObject(new LinkedHashMap<>());
     Object jsonInput = toJson("INPUTS", toString(analyzer.getInputs()), out, work);
@@ -374,7 +349,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
       SessionState.get().setActiveAuthorizer(authorizer);
       try {
-        Driver.doAuthorization(analyzer, "");
+        Driver.doAuthorization(queryState.getHiveOperation(), analyzer, "");
       } finally {
         SessionState.get().setActiveAuthorizer(delegate);
       }
@@ -400,8 +375,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
   private JSONObject outputMap(Map<?, ?> mp, boolean hasHeader, PrintStream out,
       boolean extended, boolean jsonOutput, int indent) throws Exception {
 
-    TreeMap<Object, Object> tree = new TreeMap<Object, Object>();
-    tree.putAll(mp);
+    TreeMap<Object, Object> tree = getBasictypeKeyedMap(mp);
     JSONObject json = jsonOutput ? new JSONObject(new LinkedHashMap<>()) : null;
     if (out != null && hasHeader && !mp.isEmpty()) {
       out.println();
@@ -493,12 +467,13 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
         }
       }
       else if (ent.getValue() instanceof Map) {
+        String stringValue = getBasictypeKeyedMap((Map)ent.getValue()).toString();
         if (out != null) {
-          out.print(ent.getValue().toString());
+          out.print(stringValue);
           out.println();
         }
         if (jsonOutput) {
-          json.put(ent.getKey().toString(), ent.getValue().toString());
+          json.put(ent.getKey().toString(), stringValue);
         }
       }
       else if (ent.getValue() != null) {
@@ -519,6 +494,32 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
     }
 
     return jsonOutput ? json : null;
+  }
+
+  /**
+   * Retruns a map which have either primitive or string keys.
+   * 
+   * This is neccessary to discard object level comparators which may sort the objects based on some non-trivial logic.
+   * 
+   * @param mp
+   * @return
+   */
+  private TreeMap<Object, Object> getBasictypeKeyedMap(Map<?, ?> mp) {
+    TreeMap<Object, Object> ret = new TreeMap<Object, Object>();
+    if (mp.size() > 0) {
+      Object firstKey = mp.keySet().iterator().next();
+      if (firstKey.getClass().isPrimitive() || firstKey instanceof String) {
+        // keep it as-is
+        ret.putAll(mp);
+        return ret;
+      } else {
+        for (Entry<?, ?> entry : mp.entrySet()) {
+          // discard possibly type related sorting order and replace with alphabetical
+          ret.put(entry.getKey().toString(), entry.getValue());
+        }
+      }
+    }
+    return ret;
   }
 
   private JSONArray outputList(List<?> l, PrintStream out, boolean hasHeader,

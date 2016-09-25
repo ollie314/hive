@@ -33,8 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -98,7 +100,8 @@ public class PTest {
     mExecutionContext = executionContext;
     mSshCommandExecutor = sshCommandExecutor;
     mRsyncCommandExecutor = rsyncCommandExecutor;
-    mExecutor = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool());
+    mExecutor = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool(
+        new ThreadFactoryBuilder().setDaemon(true).setNameFormat("HostExecutor %d").build()));
     final File failedLogDir = Dirs.create(new File(logDir, "failed"));
     final File succeededLogDir = Dirs.create(new File(logDir, "succeeded"));
     final File scratchDir = Dirs.createEmpty(new File(mExecutionContext.getLocalWorkingDirectory(), "scratch"));
@@ -133,7 +136,7 @@ public class PTest {
       templateDefaultsBuilder.put("additionalProfiles", configuration.getAdditionalProfiles());
     }
     templateDefaults = templateDefaultsBuilder.build();
-    TestParser testParser = new TestParser(configuration.getContext(), configuration.getTestCasePropertyName(),
+    TestParser testParser = new TestParser(configuration.getContext(), new AtomicInteger(1), configuration.getTestCasePropertyName(),
         new File(mExecutionContext.getLocalWorkingDirectory(), configuration.getRepositoryName() + "-source"),
         logger);
 
@@ -164,6 +167,7 @@ public class PTest {
     Map<String, Long> elapsedTimes = Maps.newTreeMap();
     try {
       mLogger.info("Running tests with " + mConfiguration);
+      mLogger.info("Running tests with configuration context=[{}]", mConfiguration.getContext());
       for(Phase phase : mPhases) {
         String msg = "Executing " + phase.getClass().getName();
         mLogger.info(msg);

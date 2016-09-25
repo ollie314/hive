@@ -35,6 +35,8 @@ import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.HiveKey;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
 import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
@@ -78,6 +80,7 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
   private transient ObjectInspector[] partitionObjectInspectors;
   private transient ObjectInspector[] bucketObjectInspectors;
   private transient int buckColIdxInKey;
+  private transient int buckColIdxInKeyForAcid = -1;
   private boolean firstRow;
   private transient int tag;
   private boolean skipTag = false;
@@ -115,7 +118,7 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
   protected transient String[] inputAliases;  // input aliases of this RS for join (used for PPD)
   protected transient boolean useUniformHash = false;
   // picks topN K:V pairs from input.
-  protected transient TopNHash reducerHash = new TopNHash();
+  protected transient TopNHash reducerHash;
   protected transient HiveKey keyWritable = new HiveKey();
   protected transient ObjectInspector keyObjectInspector;
   protected transient ObjectInspector valueObjectInspector;
@@ -183,6 +186,9 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
       keyEval = new ExprNodeEvaluator[keys.size()];
       int i = 0;
       for (ExprNodeDesc e : keys) {
+        if (e instanceof ExprNodeConstantDesc && ("_bucket_number").equals(((ExprNodeConstantDesc)e).getValue())) {
+          buckColIdxInKeyForAcid = i;
+        }
         keyEval[i++] = ExprNodeEvaluatorFactory.get(e);
       }
 
@@ -237,7 +243,7 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
       float memUsage = conf.getTopNMemoryUsage();
 
       if (limit >= 0 && memUsage > 0) {
-        reducerHash = conf.isPTFReduceSink() ? new PTFTopNHash() : reducerHash;
+        reducerHash = conf.isPTFReduceSink() ? new PTFTopNHash() : new TopNHash();
         reducerHash.initialize(limit, memUsage, conf.isMapGroupBy(), this);
       }
 
@@ -359,6 +365,9 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
         // In the non-partitioned case we still want to compute the bucket number for updates and
         // deletes.
         bucketNumber = computeBucketNumber(row, conf.getNumBuckets());
+        if (buckColIdxInKeyForAcid != -1) {
+          cachedKeys[0][buckColIdxInKeyForAcid] = new Text(String.valueOf(bucketNumber));
+        }
       }
 
       HiveKey firstKey = toHiveKey(cachedKeys[0], tag, null);
@@ -385,8 +394,11 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
        */
       boolean partKeyNull = conf.isPTFReduceSink() && partitionKeysAreNull(row);
 
-      // Try to store the first key. If it's not excluded, we will proceed.
-      int firstIndex = reducerHash.tryStoreKey(firstKey, partKeyNull);
+      // Try to store the first key.
+      // if TopNHashes aren't active, always forward
+      // if TopNHashes are active, proceed if not already excluded (i.e order by limit)
+      final int firstIndex =
+          (reducerHash != null) ? reducerHash.tryStoreKey(firstKey, partKeyNull) : TopNHash.FORWARD;
       if (firstIndex == TopNHash.EXCLUDE) return; // Nothing to do.
       // Compute value and hashcode - we'd either store or forward them.
       BytesWritable value = makeValueWritable(row);
@@ -394,6 +406,7 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
       if (firstIndex == TopNHash.FORWARD) {
         collect(firstKey, value);
       } else {
+        // invariant: reducerHash != null
         assert firstIndex >= 0;
         reducerHash.storeValue(firstIndex, firstKey.hashCode(), value, false);
       }
@@ -535,6 +548,7 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
     // forward is not called
     if (null != out) {
       numRows++;
+      runTimeNumRows++;
       if (isLogInfoEnabled) {
         if (numRows == cntr) {
           cntr = logEveryNRows == 0 ? cntr * 10 : numRows + logEveryNRows;
@@ -563,12 +577,13 @@ public class ReduceSinkOperator extends TerminalOperator<ReduceSinkDesc>
 
   @Override
   protected void closeOp(boolean abort) throws HiveException {
-    if (!abort) {
+    if (!abort && reducerHash != null) {
       reducerHash.flush();
     }
     super.closeOp(abort);
     out = null;
     random = null;
+    reducerHash = null;
     if (isLogInfoEnabled) {
       LOG.info(toString() + ": records written - " + numRows);
     }

@@ -34,118 +34,6 @@ FROM
 ) subq1
 JOIN src1 x ON (x.key = subq1.key)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_SUBQUERY
-            TOK_UNIONALL
-               TOK_QUERY
-                  TOK_FROM
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src
-                        x
-                  TOK_INSERT
-                     TOK_DESTINATION
-                        TOK_DIR
-                           TOK_TMP_FILE
-                     TOK_SELECT
-                        TOK_SELEXPR
-                           .
-                              TOK_TABLE_OR_COL
-                                 x
-                              key
-                           key
-                        TOK_SELEXPR
-                           TOK_FUNCTION
-                              count
-                              1
-                           cnt
-                     TOK_WHERE
-                        <
-                           .
-                              TOK_TABLE_OR_COL
-                                 x
-                              key
-                           20
-                     TOK_GROUPBY
-                        .
-                           TOK_TABLE_OR_COL
-                              x
-                           key
-               TOK_QUERY
-                  TOK_FROM
-                     TOK_TABREF
-                        TOK_TABNAME
-                           src
-                        x1
-                  TOK_INSERT
-                     TOK_DESTINATION
-                        TOK_DIR
-                           TOK_TMP_FILE
-                     TOK_SELECT
-                        TOK_SELEXPR
-                           .
-                              TOK_TABLE_OR_COL
-                                 x1
-                              key
-                           key
-                        TOK_SELEXPR
-                           TOK_FUNCTION
-                              count
-                              1
-                           cnt
-                     TOK_WHERE
-                        >
-                           .
-                              TOK_TABLE_OR_COL
-                                 x1
-                              key
-                           100
-                     TOK_GROUPBY
-                        .
-                           TOK_TABLE_OR_COL
-                              x1
-                           key
-            subq1
-         TOK_TABREF
-            TOK_TABNAME
-               src1
-            x
-         =
-            .
-               TOK_TABLE_OR_COL
-                  x
-               key
-            .
-               TOK_TABLE_OR_COL
-                  subq1
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               dest_j1
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  x
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  x
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  subq1
-               cnt
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-7 depends on stages: Stage-1, Stage-4
@@ -194,7 +82,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -214,7 +102,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -317,15 +205,20 @@ STAGE PLANS:
                         input format: org.apache.hadoop.mapred.TextInputFormat
                         output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                         properties:
+                          COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                           bucket_count -1
                           columns key,value,val2
                           columns.comments 
                           columns.types string:string:int
 #### A masked pattern was here ####
                           name default.dest_j1
+                          numFiles 0
+                          numRows 0
+                          rawDataSize 0
                           serialization.ddl struct dest_j1 { string key, string value, i32 val2}
                           serialization.format 1
                           serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                          totalSize 0
 #### A masked pattern was here ####
                         serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                         name: default.dest_j1
@@ -360,15 +253,20 @@ STAGE PLANS:
                         input format: org.apache.hadoop.mapred.TextInputFormat
                         output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                         properties:
+                          COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                           bucket_count -1
                           columns key,value,val2
                           columns.comments 
                           columns.types string:string:int
 #### A masked pattern was here ####
                           name default.dest_j1
+                          numFiles 0
+                          numRows 0
+                          rawDataSize 0
                           serialization.ddl struct dest_j1 { string key, string value, i32 val2}
                           serialization.format 1
                           serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                          totalSize 0
 #### A masked pattern was here ####
                         serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                         name: default.dest_j1
@@ -426,7 +324,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -446,7 +344,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -476,15 +374,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,value,val2
                 columns.comments 
                 columns.types string:string:int
 #### A masked pattern was here ####
                 name default.dest_j1
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct dest_j1 { string key, string value, i32 val2}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.dest_j1
@@ -497,7 +400,7 @@ STAGE PLANS:
     Map Reduce
       Map Operator Tree:
           TableScan
-            alias: x
+            alias: x1
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Filter Operator
@@ -532,7 +435,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -552,7 +455,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -571,7 +474,7 @@ STAGE PLANS:
               name: default.src
             name: default.src
       Truncated Path -> Alias:
-        /src [$hdt$_0-subquery2:$hdt$_0-subquery2:$hdt$_0:x]
+        /src [$hdt$_0-subquery2:$hdt$_0-subquery2:$hdt$_0:x1]
       Needs Tagging: false
       Reduce Operator Tree:
         Group By Operator
@@ -623,7 +526,7 @@ POSTHOOK: Input: default@src
 POSTHOOK: Input: default@src1
 POSTHOOK: Output: default@dest_j1
 POSTHOOK: Lineage: dest_j1.key SIMPLE [(src1)x.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: dest_j1.val2 EXPRESSION [(src)x.null, ]
+POSTHOOK: Lineage: dest_j1.val2 EXPRESSION [(src)x.null, (src)x1.null, ]
 POSTHOOK: Lineage: dest_j1.value SIMPLE [(src1)x.FieldSchema(name:value, type:string, comment:default), ]
 PREHOOK: query: select * from dest_j1
 PREHOOK: type: QUERY

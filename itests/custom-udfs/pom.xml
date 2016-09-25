@@ -19,7 +19,7 @@ limitations under the License.
   <parent>
     <groupId>org.apache.hive</groupId>
     <artifactId>hive-it</artifactId>
-    <version>2.1.0-SNAPSHOT</version>
+    <version>2.2.0-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -42,6 +42,7 @@ limitations under the License.
     <module>udf-classloader-util</module>
     <module>udf-classloader-udf1</module>
     <module>udf-classloader-udf2</module>
+    <module>udf-vectorized-badexample</module>
   </modules>
 
   <dependencies>

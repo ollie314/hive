@@ -18,6 +18,7 @@
 package org.apache.hadoop.hive.ql.udf.generic;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,9 @@ import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator.AbstractAggregationBuffer;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator.AggregationBuffer;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator.AggregationType;
 import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
@@ -38,6 +41,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorObject;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveDecimalObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
@@ -106,6 +110,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     AbstractGenericUDAFAverageEvaluator eval =
         (AbstractGenericUDAFAverageEvaluator) getEvaluator(paramInfo.getParameters());
     eval.avgDistinct = paramInfo.isDistinct();
+    eval.isWindowing = paramInfo.isWindowing();
     return eval;
   }
 
@@ -115,7 +120,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     public void doReset(AverageAggregationBuffer<Double> aggregation) throws HiveException {
       aggregation.count = 0;
       aggregation.sum = new Double(0);
-      aggregation.previousValue = null;
+      aggregation.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     @Override
@@ -142,6 +147,12 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       double value = ((DoubleObjectInspector)sumFieldOI).get(partialSum);
       aggregation.count += partialCount;
       aggregation.sum += value;
+    }
+
+    @Override
+    protected void doMergeAdd(Double sum,
+        ObjectInspectorObject obj) {
+      sum += PrimitiveObjectInspectorUtils.getDouble(obj.getValues()[0], copiedOI);
     }
 
     @Override
@@ -172,6 +183,10 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
 
     @Override
     public GenericUDAFEvaluator getWindowingEvaluator(WindowFrameDef wFrameDef) {
+      // Don't use streaming for distinct cases
+      if (isWindowingDistinct()) {
+        return null;
+      }
 
       return new GenericUDAFStreamingEvaluator.SumAvgEnhancer<DoubleWritable, Object[]>(this, wFrameDef) {
 
@@ -212,6 +227,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     public void doReset(AverageAggregationBuffer<HiveDecimal> aggregation) throws HiveException {
       aggregation.count = 0;
       aggregation.sum = HiveDecimal.ZERO;
+      aggregation.uniqueObjects = new HashSet<ObjectInspectorObject>();
     }
 
     @Override
@@ -263,6 +279,14 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       }
     }
 
+
+    @Override
+    protected void doMergeAdd(
+        HiveDecimal sum,
+        ObjectInspectorObject obj) {
+      sum.add(PrimitiveObjectInspectorUtils.getHiveDecimal(obj.getValues()[0], copiedOI));
+    }
+
     @Override
     protected void doTerminatePartial(AverageAggregationBuffer<HiveDecimal> aggregation) {
       if(partialResult[1] == null && aggregation.sum != null) {
@@ -296,6 +320,10 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
 
     @Override
     public GenericUDAFEvaluator getWindowingEvaluator(WindowFrameDef wFrameDef) {
+      // Don't use streaming for distinct cases
+      if (isWindowingDistinct()) {
+        return null;
+      }
 
       return new GenericUDAFStreamingEvaluator.SumAvgEnhancer<HiveDecimalWritable, Object[]>(
           this, wFrameDef) {
@@ -332,19 +360,25 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     }
   }
 
-  private static class AverageAggregationBuffer<TYPE> implements AggregationBuffer {
-    private Object previousValue;
+  @AggregationType(estimable = true)
+  private static class AverageAggregationBuffer<TYPE> extends AbstractAggregationBuffer {
+    private HashSet<ObjectInspectorObject> uniqueObjects; // Unique rows.
     private long count;
     private TYPE sum;
+
+    @Override
+    public int estimate() {
+      return 2*JavaDataModel.PRIMITIVES2;
+    }
   };
 
   @SuppressWarnings("unchecked")
   public static abstract class AbstractGenericUDAFAverageEvaluator<TYPE> extends GenericUDAFEvaluator {
+    protected boolean isWindowing;
     protected boolean avgDistinct;
-
     // For PARTIAL1 and COMPLETE
     protected transient PrimitiveObjectInspector inputOI;
-    protected transient ObjectInspector copiedOI;
+    protected transient PrimitiveObjectInspector copiedOI;
     // For PARTIAL2 and FINAL
     private transient StructObjectInspector soi;
     private transient StructField countField;
@@ -363,6 +397,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         PrimitiveObjectInspector inputOI, Object parameter);
     protected abstract void doMerge(AverageAggregationBuffer<TYPE> aggregation, Long partialCount,
         ObjectInspector sumFieldOI, Object partialSum);
+    protected abstract void doMergeAdd(TYPE sum, ObjectInspectorObject obj);
     protected abstract void doTerminatePartial(AverageAggregationBuffer<TYPE> aggregation);
     protected abstract Object doTerminate(AverageAggregationBuffer<TYPE> aggregation);
     protected abstract void doReset(AverageAggregationBuffer<TYPE> aggregation) throws HiveException;
@@ -376,7 +411,7 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       // init input
       if (mode == Mode.PARTIAL1 || mode == Mode.COMPLETE) {
         inputOI = (PrimitiveObjectInspector) parameters[0];
-        copiedOI = ObjectInspectorUtils.getStandardObjectInspector(inputOI,
+        copiedOI = (PrimitiveObjectInspector)ObjectInspectorUtils.getStandardObjectInspector(inputOI,
             ObjectInspectorCopyOption.JAVA);
       } else {
         soi = (StructObjectInspector) parameters[0];
@@ -410,6 +445,10 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
       }
     }
 
+    protected boolean isWindowingDistinct() {
+      return isWindowing && avgDistinct;
+    }
+
     @AggregationType(estimable = true)
     static class AverageAgg extends AbstractAggregationBuffer {
       long count;
@@ -432,12 +471,15 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
         AverageAggregationBuffer<TYPE> averageAggregation = (AverageAggregationBuffer<TYPE>) aggregation;
         try {
           // Skip the same value if avgDistinct is true
-          if (this.avgDistinct &&
-              ObjectInspectorUtils.compare(parameter, inputOI, averageAggregation.previousValue, copiedOI) == 0) {
-            return;
+          if (isWindowingDistinct()) {
+            ObjectInspectorObject obj = new ObjectInspectorObject(
+                ObjectInspectorUtils.copyToStandardObject(parameter, inputOI, ObjectInspectorCopyOption.JAVA),
+                copiedOI);
+            if (averageAggregation.uniqueObjects.contains(obj)) {
+              return;
+            }
+            averageAggregation.uniqueObjects.add(obj);
           }
-          averageAggregation.previousValue = ObjectInspectorUtils.copyToStandardObject(
-              parameter, inputOI, ObjectInspectorCopyOption.JAVA);
 
           doIterate(averageAggregation, inputOI, parameter);
         } catch (NumberFormatException e) {
@@ -451,6 +493,10 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
 
     @Override
     public Object terminatePartial(AggregationBuffer aggregation) throws HiveException {
+      if (isWindowingDistinct()) {
+        throw new HiveException("Distinct windowing UDAF doesn't support merge and terminatePartial");
+      }
+
       doTerminatePartial((AverageAggregationBuffer<TYPE>) aggregation);
       return partialResult;
     }
@@ -459,9 +505,13 @@ public class GenericUDAFAverage extends AbstractGenericUDAFResolver {
     public void merge(AggregationBuffer aggregation, Object partial)
         throws HiveException {
       if (partial != null) {
-        doMerge((AverageAggregationBuffer<TYPE>)aggregation,
-            countFieldOI.get(soi.getStructFieldData(partial, countField)),
-            sumFieldOI, soi.getStructFieldData(partial, sumField));
+        if (isWindowingDistinct()) {
+          throw new HiveException("Distinct windowing UDAF doesn't support merge and terminatePartial");
+        } else {
+          doMerge((AverageAggregationBuffer<TYPE>)aggregation,
+              countFieldOI.get(soi.getStructFieldData(partial, countField)),
+              sumFieldOI, soi.getStructFieldData(partial, sumField));
+        }
       }
     }
 

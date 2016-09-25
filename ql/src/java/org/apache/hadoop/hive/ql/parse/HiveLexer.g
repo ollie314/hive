@@ -124,6 +124,7 @@ KW_INT: 'INT';
 KW_BIGINT: 'BIGINT';
 KW_FLOAT: 'FLOAT';
 KW_DOUBLE: 'DOUBLE';
+KW_PRECISION: 'PRECISION';
 KW_DATE: 'DATE';
 KW_DATETIME: 'DATETIME';
 KW_TIMESTAMP: 'TIMESTAMP';
@@ -301,7 +302,9 @@ KW_CONF: 'CONF';
 KW_VALUES: 'VALUES';
 KW_RELOAD: 'RELOAD';
 KW_YEAR: 'YEAR';
+KW_QUARTER: 'QUARTER';
 KW_MONTH: 'MONTH';
+KW_WEEK: 'WEEK';
 KW_DAY: 'DAY';
 KW_HOUR: 'HOUR';
 KW_MINUTE: 'MINUTE';
@@ -318,6 +321,18 @@ KW_LEVEL: 'LEVEL';
 KW_SNAPSHOT: 'SNAPSHOT';
 KW_AUTOCOMMIT: 'AUTOCOMMIT';
 KW_CACHE: 'CACHE';
+KW_PRIMARY: 'PRIMARY';
+KW_FOREIGN: 'FOREIGN';
+KW_REFERENCES: 'REFERENCES';
+KW_CONSTRAINT: 'CONSTRAINT';
+KW_VALIDATE: 'VALIDATE';
+KW_NOVALIDATE: 'NOVALIDATE';
+KW_RELY: 'RELY';
+KW_NORELY: 'NORELY';
+KW_KEY: 'KEY';
+KW_ABORT: 'ABORT';
+KW_EXTRACT: 'EXTRACT';
+KW_FLOOR: 'FLOOR';
 
 // Operators
 // NOTE: if you add a new function/operator, add it to sysFuncNames so that describe function _FUNC_ will work.
@@ -400,24 +415,14 @@ CharSetLiteral
     | '0' 'X' (HexDigit|Digit)+
     ;
 
-BigintLiteral
+IntegralLiteral
     :
-    (Digit)+ 'L'
+    (Digit)+ ('L' | 'S' | 'Y')
     ;
 
-SmallintLiteral
+NumberLiteral
     :
-    (Digit)+ 'S'
-    ;
-
-TinyintLiteral
-    :
-    (Digit)+ 'Y'
-    ;
-
-DecimalLiteral
-    :
-    Number 'B' 'D'
+    Number ('D' | 'B' 'D')
     ;
 
 ByteLengthLiteral

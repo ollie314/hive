@@ -102,6 +102,12 @@ TOK_METADATA;
 TOK_NULL;
 TOK_ISNULL;
 TOK_ISNOTNULL;
+TOK_PRIMARY_KEY;
+TOK_FOREIGN_KEY;
+TOK_VALIDATE;
+TOK_NOVALIDATE;
+TOK_RELY;
+TOK_NORELY;
 TOK_TINYINT;
 TOK_SMALLINT;
 TOK_INT;
@@ -173,6 +179,8 @@ TOK_ALTERTABLE_SKEWED_LOCATION;
 TOK_ALTERTABLE_BUCKETS;
 TOK_ALTERTABLE_CLUSTER_SORT;
 TOK_ALTERTABLE_COMPACT;
+TOK_ALTERTABLE_DROPCONSTRAINT;
+TOK_ALTERTABLE_ADDCONSTRAINT;
 TOK_ALTERINDEX_REBUILD;
 TOK_ALTERINDEX_PROPERTIES;
 TOK_MSCK;
@@ -242,6 +250,8 @@ TOK_ALTERVIEW_DROPPROPERTIES;
 TOK_ALTERVIEW_ADDPARTS;
 TOK_ALTERVIEW_DROPPARTS;
 TOK_ALTERVIEW_RENAME;
+TOK_CREATE_MATERIALIZED_VIEW;
+TOK_DROP_MATERIALIZED_VIEW;
 TOK_VIEWPARTCOLS;
 TOK_EXPLAIN;
 TOK_EXPLAIN_SQ_REWRITE;
@@ -368,6 +378,7 @@ TOK_COMMIT;
 TOK_ROLLBACK;
 TOK_SET_AUTOCOMMIT;
 TOK_CACHE_METADATA;
+TOK_ABORT_TRANSACTIONS;
 }
 
 
@@ -457,6 +468,7 @@ import org.apache.hadoop.hive.conf.HiveConf;
     xlateMap.put("KW_BIGINT", "BIGINT");
     xlateMap.put("KW_FLOAT", "FLOAT");
     xlateMap.put("KW_DOUBLE", "DOUBLE");
+    xlateMap.put("KW_PRECISION", "PRECISION");
     xlateMap.put("KW_DATE", "DATE");
     xlateMap.put("KW_DATETIME", "DATETIME");
     xlateMap.put("KW_TIMESTAMP", "TIMESTAMP");
@@ -515,7 +527,19 @@ import org.apache.hadoop.hive.conf.HiveConf;
     xlateMap.put("KW_UPDATE", "UPDATE");
     xlateMap.put("KW_VALUES", "VALUES");
     xlateMap.put("KW_PURGE", "PURGE");
-
+    xlateMap.put("KW_PRIMARY", "PRIMARY");
+    xlateMap.put("KW_FOREIGN", "FOREIGN");
+    xlateMap.put("KW_KEY", "KEY");
+    xlateMap.put("KW_REFERENCES", "REFERENCES");
+    xlateMap.put("KW_CONSTRAINT", "CONSTRAINT");
+    xlateMap.put("KW_ENABLE", "ENABLE");
+    xlateMap.put("KW_DISABLE", "DISABLE");
+    xlateMap.put("KW_VALIDATE", "VALIDATE");
+    xlateMap.put("KW_NOVALIDATE", "NOVALIDATE");
+    xlateMap.put("KW_RELY", "RELY");
+    xlateMap.put("KW_NORELY", "NORELY");
+    xlateMap.put("KW_ABORT", "ABORT");
+    xlateMap.put("KW_TRANSACTIONS", "TRANSACTIONS");
 
     // Operators
     xlateMap.put("DOT", ".");
@@ -698,7 +722,7 @@ explainStatement
 explainOption
 @init { msgs.push("explain option"); }
 @after { msgs.pop(); }
-    : KW_EXTENDED|KW_FORMATTED|KW_DEPENDENCY|KW_LOGICAL|KW_AUTHORIZATION
+    : KW_EXTENDED|KW_FORMATTED|KW_DEPENDENCY|KW_LOGICAL|KW_AUTHORIZATION|KW_ANALYZE
     ;
 
 execStatement
@@ -762,7 +786,9 @@ ddlStatement
     | showStatement
     | metastoreCheck
     | createViewStatement
+    | createMaterializedViewStatement
     | dropViewStatement
+    | dropMaterializedViewStatement
     | createFunctionStatement
     | createMacroStatement
     | createIndexStatement
@@ -787,6 +813,7 @@ ddlStatement
     | revokeRole
     | setRole
     | showCurrentRole
+    | abortTransactionStatement
     ;
 
 ifExists
@@ -890,7 +917,7 @@ createTableStatement
          tableFileFormat?
          tableLocation?
          tablePropertiesPrefixed?
-       | (LPAREN columnNameTypeList RPAREN)?
+       | (LPAREN columnNameTypeOrPKOrFKList RPAREN)?
          tableComment?
          tablePartition?
          tableBuckets?
@@ -903,7 +930,7 @@ createTableStatement
       )
     -> ^(TOK_CREATETABLE $name $temp? $ext? ifNotExists?
          ^(TOK_LIKETABLE $likeName?)
-         columnNameTypeList?
+         columnNameTypeOrPKOrFKList?
          tableComment?
          tablePartition?
          tableBuckets?
@@ -1024,6 +1051,8 @@ alterTableStatementSuffix
     | alterStatementSuffixSkewedby
     | alterStatementSuffixExchangePartition
     | alterStatementPartitionKeyType
+    | alterStatementSuffixDropConstraint
+    | alterStatementSuffixAddConstraint
     | partitionSpec? alterTblPartitionStatementSuffix -> alterTblPartitionStatementSuffix partitionSpec?
     ;
 
@@ -1112,6 +1141,21 @@ alterStatementSuffixAddCol
     -> {$add != null}? ^(TOK_ALTERTABLE_ADDCOLS columnNameTypeList restrictOrCascade?)
     ->                 ^(TOK_ALTERTABLE_REPLACECOLS columnNameTypeList restrictOrCascade?)
     ;
+
+alterStatementSuffixAddConstraint
+@init { pushMsg("add constraint statement", state); }
+@after { popMsg(state); }
+   :  KW_ADD (fk=foreignKeyWithName | primaryKeyWithName)
+   -> {fk != null}? ^(TOK_ALTERTABLE_ADDCONSTRAINT foreignKeyWithName)
+   ->               ^(TOK_ALTERTABLE_ADDCONSTRAINT primaryKeyWithName)
+   ;
+
+alterStatementSuffixDropConstraint
+@init { pushMsg("drop constraint statement", state); }
+@after { popMsg(state); }
+   : KW_DROP KW_CONSTRAINT cName=identifier
+   ->^(TOK_ALTERTABLE_DROPCONSTRAINT $cName)
+   ;
 
 alterStatementSuffixRenameCol
 @init { pushMsg("rename column name", state); }
@@ -1324,8 +1368,8 @@ alterStatementSuffixBucketNum
 alterStatementSuffixCompact
 @init { msgs.push("compaction request"); }
 @after { msgs.pop(); }
-    : KW_COMPACT compactType=StringLiteral
-    -> ^(TOK_ALTERTABLE_COMPACT $compactType)
+    : KW_COMPACT compactType=StringLiteral (KW_WITH KW_OVERWRITE KW_TBLPROPERTIES tableProperties)?
+    -> ^(TOK_ALTERTABLE_COMPACT $compactType tableProperties?)
     ;
 
 
@@ -1738,6 +1782,25 @@ createViewStatement
         )
     ;
 
+createMaterializedViewStatement
+@init {
+    pushMsg("create materialized view statement", state);
+}
+@after { popMsg(state); }
+    : KW_CREATE KW_MATERIALIZED KW_VIEW (ifNotExists)? name=tableName
+        tableComment? tableRowFormat? tableFileFormat? tableLocation?
+        tablePropertiesPrefixed? KW_AS selectStatementWithCTE
+    -> ^(TOK_CREATE_MATERIALIZED_VIEW $name 
+         ifNotExists?
+         tableComment?
+         tableRowFormat?
+         tableFileFormat?
+         tableLocation?
+         tablePropertiesPrefixed?
+         selectStatementWithCTE
+        )
+    ;
+
 viewPartition
 @init { pushMsg("view partition specification", state); }
 @after { popMsg(state); }
@@ -1749,6 +1812,12 @@ dropViewStatement
 @init { pushMsg("drop view statement", state); }
 @after { popMsg(state); }
     : KW_DROP KW_VIEW ifExists? viewName -> ^(TOK_DROPVIEW viewName ifExists?)
+    ;
+
+dropMaterializedViewStatement
+@init { pushMsg("drop materialized view statement", state); }
+@after { popMsg(state); }
+    : KW_DROP KW_MATERIALIZED KW_VIEW ifExists? viewName -> ^(TOK_DROP_MATERIALIZED_VIEW viewName ifExists?)
     ;
 
 showFunctionIdentifier
@@ -1943,6 +2012,11 @@ columnNameTypeList
 @after { popMsg(state); }
     : columnNameType (COMMA columnNameType)* -> ^(TOK_TABCOLLIST columnNameType+)
     ;
+columnNameTypeOrPKOrFKList
+@init { pushMsg("column name type list with PK and FK", state); }
+@after { popMsg(state); }
+    : columnNameTypeOrPKOrFK (COMMA columnNameTypeOrPKOrFK)* -> ^(TOK_TABCOLLIST columnNameTypeOrPKOrFK+)
+    ;
 
 columnNameColonTypeList
 @init { pushMsg("column name type list", state); }
@@ -1974,6 +2048,61 @@ columnNameOrderList
 @init { pushMsg("column name order list", state); }
 @after { popMsg(state); }
     : columnNameOrder (COMMA columnNameOrder)* -> ^(TOK_TABCOLNAME columnNameOrder+)
+    ;
+
+columnParenthesesList
+@init { pushMsg("column parentheses list", state); }
+@after { popMsg(state); }
+    : LPAREN columnNameList RPAREN
+    ;
+
+enableSpecification
+@init { pushMsg("enable specification", state); }
+@after { popMsg(state); }
+    : KW_ENABLE -> ^(TOK_ENABLE)
+    | KW_DISABLE -> ^(TOK_DISABLE)
+    ;
+
+validateSpecification
+@init { pushMsg("validate specification", state); }
+@after { popMsg(state); }
+    : KW_VALIDATE -> ^(TOK_VALIDATE)
+    | KW_NOVALIDATE -> ^(TOK_NOVALIDATE)
+    ;
+
+relySpecification
+@init { pushMsg("rely specification", state); }
+@after { popMsg(state); }
+    :  KW_RELY -> ^(TOK_RELY)
+    |  (KW_NORELY)? -> ^(TOK_NORELY)
+    ;
+
+primaryKeyWithoutName
+@init { pushMsg("primary key without key name", state); }
+@after { popMsg(state); }
+    : KW_PRIMARY KW_KEY columnParenthesesList enableSpec=enableSpecification validateSpec=validateSpecification relySpec=relySpecification
+    -> ^(TOK_PRIMARY_KEY columnParenthesesList $relySpec $enableSpec $validateSpec)
+    ;
+
+primaryKeyWithName
+@init { pushMsg("primary key with key name", state); }
+@after { popMsg(state); }
+    : KW_CONSTRAINT idfr=identifier KW_PRIMARY KW_KEY pkCols=columnParenthesesList enableSpec=enableSpecification validateSpec=validateSpecification relySpec=relySpecification
+    -> ^(TOK_PRIMARY_KEY $pkCols $idfr $relySpec $enableSpec $validateSpec)
+    ;
+
+foreignKeyWithName
+@init { pushMsg("foreign key with key name", state); }
+@after { popMsg(state); }
+    : KW_CONSTRAINT idfr=identifier KW_FOREIGN KW_KEY fkCols=columnParenthesesList  KW_REFERENCES tabName=tableName parCols=columnParenthesesList enableSpec=enableSpecification validateSpec=validateSpecification relySpec=relySpecification
+    -> ^(TOK_FOREIGN_KEY $idfr $fkCols $tabName $parCols $relySpec $enableSpec $validateSpec)
+    ;
+
+foreignKeyWithoutName
+@init { pushMsg("foreign key without key name", state); }
+@after { popMsg(state); }
+    : KW_FOREIGN KW_KEY fkCols=columnParenthesesList  KW_REFERENCES tabName=tableName parCols=columnParenthesesList enableSpec=enableSpecification validateSpec=validateSpecification relySpec=relySpecification
+    -> ^(TOK_FOREIGN_KEY $fkCols  $tabName $parCols $relySpec $enableSpec $validateSpec)
     ;
 
 skewedValueElement
@@ -2087,6 +2216,16 @@ columnNameType
     ->                     ^(TOK_TABCOL $colName colType $comment)
     ;
 
+columnNameTypeOrPKOrFK
+@init { pushMsg("column name or primary key or foreign key", state); }
+@after { popMsg(state); }
+    : ( foreignKeyWithName )
+    | ( primaryKeyWithName )
+    | ( primaryKeyWithoutName )
+    | ( foreignKeyWithoutName )
+    | ( columnNameType )
+    ;
+
 columnNameColonType
 @init { pushMsg("column specification", state); }
 @after { popMsg(state); }
@@ -2123,7 +2262,7 @@ primitiveType
     | KW_BIGINT        ->    TOK_BIGINT
     | KW_BOOLEAN       ->    TOK_BOOLEAN
     | KW_FLOAT         ->    TOK_FLOAT
-    | KW_DOUBLE        ->    TOK_DOUBLE
+    | KW_DOUBLE KW_PRECISION?       ->    TOK_DOUBLE
     | KW_DATE          ->    TOK_DATE
     | KW_DATETIME      ->    TOK_DATETIME
     | KW_TIMESTAMP     ->    TOK_TIMESTAMP
@@ -2506,3 +2645,10 @@ setAutoCommitStatement
 /*
 END user defined transaction boundaries
 */
+
+abortTransactionStatement
+@init { pushMsg("abort transactions statement", state); }
+@after { popMsg(state); }
+  :
+  KW_ABORT KW_TRANSACTIONS ( Number )+ -> ^(TOK_ABORT_TRANSACTIONS ( Number )+)
+  ;

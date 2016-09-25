@@ -31,11 +31,13 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexFieldCollation;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.rex.RexWindow;
 import org.apache.calcite.rex.RexWindowBound;
@@ -44,10 +46,13 @@ import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
 import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
+import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
+import org.apache.hadoop.hive.ql.optimizer.ConstantPropagateProcFactory;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.ASTConverter.RexVisitor;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.ASTConverter.Schema;
 import org.apache.hadoop.hive.ql.parse.ASTNode;
+import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.parse.PTFInvocationSpec.NullOrder;
 import org.apache.hadoop.hive.ql.parse.PTFInvocationSpec.Order;
 import org.apache.hadoop.hive.ql.parse.PTFInvocationSpec.OrderExpression;
@@ -66,8 +71,14 @@ import org.apache.hadoop.hive.ql.parse.WindowingSpec.WindowSpec;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeFieldDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +90,7 @@ import com.google.common.collect.ImmutableSet;
  */
 public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
 
+  private final boolean            foldExpr;
   private final String             tabAlias;
   private final RelDataType        inputRowType;
   private final ImmutableSet<Integer>       inputVCols;
@@ -89,16 +101,28 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
 
   public ExprNodeConverter(String tabAlias, RelDataType inputRowType,
       Set<Integer> vCols, RelDataTypeFactory dTFactory) {
-    this(tabAlias, null, inputRowType, null, vCols, dTFactory);
+    this(tabAlias, null, inputRowType, null, vCols, dTFactory, false);
+  }
+
+  public ExprNodeConverter(String tabAlias, RelDataType inputRowType,
+      Set<Integer> vCols, RelDataTypeFactory dTFactory, boolean foldExpr) {
+    this(tabAlias, null, inputRowType, null, vCols, dTFactory, foldExpr);
   }
 
   public ExprNodeConverter(String tabAlias, String columnAlias, RelDataType inputRowType,
           RelDataType outputRowType, Set<Integer> inputVCols, RelDataTypeFactory dTFactory) {
+    this(tabAlias, columnAlias, inputRowType, outputRowType, inputVCols, dTFactory, false);
+  }
+
+  public ExprNodeConverter(String tabAlias, String columnAlias, RelDataType inputRowType,
+          RelDataType outputRowType, Set<Integer> inputVCols, RelDataTypeFactory dTFactory,
+          boolean foldExpr) {
     super(true);
     this.tabAlias = tabAlias;
     this.inputRowType = inputRowType;
     this.inputVCols = ImmutableSet.copyOf(inputVCols);
     this.dTFactory = dTFactory;
+    this.foldExpr = foldExpr;
   }
 
   public List<WindowFunctionSpec> getWindowFunctionSpec() {
@@ -113,11 +137,31 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
   }
 
   /**
-   * TODO: Handle 1) cast 2) Field Access 3) Windowing Over() 4, Windowing Agg Call
+   * TODO: Handle 1) cast 2), Windowing Agg Call
    */
+
+  @Override
+  /*
+   * Handles expr like struct(key,value).key
+   * Follows same rules as TypeCheckProcFactory::getXpathOrFuncExprNodeDesc()
+   * which is equivalent version of parsing such an expression from AST
+   */
+  public ExprNodeDesc visitFieldAccess(RexFieldAccess fieldAccess) {
+    ExprNodeDesc parent = fieldAccess.getReferenceExpr().accept(this);
+    String child = fieldAccess.getField().getName();
+    TypeInfo parentType = parent.getTypeInfo();
+    // Allow accessing a field of list element structs directly from a list
+    boolean isList = (parentType.getCategory() == ObjectInspector.Category.LIST);
+    if (isList) {
+      parentType = ((ListTypeInfo) parentType).getListElementTypeInfo();
+    }
+    TypeInfo t = ((StructTypeInfo) parentType).getStructFieldTypeInfo(child);
+    return  new ExprNodeFieldDesc(t, parent, child, isList);
+  }
+
   @Override
   public ExprNodeDesc visitCall(RexCall call) {
-    ExprNodeGenericFuncDesc gfDesc = null;
+    ExprNodeDesc gfDesc = null;
 
     if (!deep) {
       return null;
@@ -149,6 +193,15 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
         throw new RuntimeException(e);
       }
     }
+
+    // Try to fold if it is a constant expression
+    if (foldExpr && RexUtil.isConstant(call)) {
+      ExprNodeDesc constantExpr = ConstantPropagateProcFactory.foldExpr((ExprNodeGenericFuncDesc)gfDesc);
+      if (constantExpr != null) {
+        gfDesc = constantExpr;
+      }
+    }
+
     return gfDesc;
   }
 

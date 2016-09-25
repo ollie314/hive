@@ -21,13 +21,13 @@ package org.apache.hadoop.hive.ql.exec;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.BinaryColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.BooleanColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
@@ -41,10 +41,12 @@ import org.apache.hadoop.hive.metastore.api.DecimalColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.DoubleColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.LongColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.SetPartitionsStatsRequest;
 import org.apache.hadoop.hive.metastore.api.StringColumnStatsData;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
@@ -68,9 +70,9 @@ public class ColumnStatsUpdateTask extends Task<ColumnStatsUpdateWork> {
       .getLogger(ColumnStatsUpdateTask.class);
 
   @Override
-  public void initialize(HiveConf conf, QueryPlan queryPlan, DriverContext ctx,
+  public void initialize(QueryState queryState, QueryPlan queryPlan, DriverContext ctx,
       CompilationOpContext opContext) {
-    super.initialize(conf, queryPlan, ctx, opContext);
+    super.initialize(queryState, queryPlan, ctx, opContext);
   }
 
   private ColumnStatistics constructColumnStatsFromInput()
@@ -91,9 +93,9 @@ public class ColumnStatsUpdateTask extends Task<ColumnStatsUpdateWork> {
     statsObj.setColName(colName.get(0));
 
     statsObj.setColType(colType.get(0));
-
+    
     ColumnStatisticsData statsData = new ColumnStatisticsData();
-
+    
     String columnType = colType.get(0);
 
     if (columnType.equalsIgnoreCase("long")) {
@@ -287,21 +289,11 @@ public class ColumnStatsUpdateTask extends Task<ColumnStatsUpdateWork> {
     return statsDesc;
   }
 
-  private int persistTableStats(Hive db) throws HiveException, MetaException,
-      IOException {
-    // Construct a column statistics object from user input
-    ColumnStatistics colStats = constructColumnStatsFromInput();
-    // Persist the column statistics object to the metastore
-    db.updateTableColumnStatistics(colStats);
-    return 0;
-  }
-
-  private int persistPartitionStats(Hive db) throws HiveException, MetaException,
-      IOException {
-    // Construct a column statistics object from user input
-    ColumnStatistics colStats = constructColumnStatsFromInput();
-    // Persist the column statistics object to the metastore
-    db.updatePartitionColumnStatistics(colStats);
+  private int persistColumnStats(Hive db) throws HiveException, MetaException, IOException {
+    List<ColumnStatistics> colStats = new ArrayList<>();
+    colStats.add(constructColumnStatsFromInput());
+    SetPartitionsStatsRequest request = new SetPartitionsStatsRequest(colStats);
+    db.setPartitionColumnStatistics(request);
     return 0;
   }
 
@@ -309,11 +301,7 @@ public class ColumnStatsUpdateTask extends Task<ColumnStatsUpdateWork> {
   public int execute(DriverContext driverContext) {
     try {
       Hive db = getHive();
-      if (work.getColStats().isTblLevel()) {
-        return persistTableStats(db);
-      } else {
-        return persistPartitionStats(db);
-      }
+      return persistColumnStats(db);
     } catch (Exception e) {
       LOG.info("Failed to persist stats in metastore", e);
     }

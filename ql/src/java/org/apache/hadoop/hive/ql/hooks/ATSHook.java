@@ -22,15 +22,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.ExplainTask;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.apache.hadoop.hive.ql.parse.ExplainConfiguration;
 import org.apache.hadoop.hive.ql.plan.ExplainWork;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.util.StringUtils;
@@ -38,7 +37,10 @@ import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
 import org.apache.hadoop.yarn.client.api.TimelineClient;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
+import org.apache.hive.common.util.ShutdownHookManager;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
@@ -74,7 +76,7 @@ public class ATSHook implements ExecuteWithHookContext {
         timelineClient.init(yarnConf);
         timelineClient.start();
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
+        ShutdownHookManager.addShutdownHook(new Runnable() {
           @Override
           public void run() {
             try {
@@ -95,6 +97,7 @@ public class ATSHook implements ExecuteWithHookContext {
   public void run(final HookContext hookContext) throws Exception {
     final long currentTime = System.currentTimeMillis();
     final HiveConf conf = new HiveConf(hookContext.getConf());
+    final QueryState queryState = hookContext.getQueryState();
 
     executor.submit(new Runnable() {
         @Override
@@ -120,23 +123,19 @@ public class ATSHook implements ExecuteWithHookContext {
 
             switch(hookContext.getHookType()) {
             case PRE_EXEC_HOOK:
+            ExplainConfiguration config = new ExplainConfiguration();
+            config.setFormatted(true);
             ExplainWork work = new ExplainWork(null,// resFile
                 null,// pCtx
                 plan.getRootTasks(),// RootTasks
                 plan.getFetchTask(),// FetchTask
-                null,// astStringTree
                 null,// analyzer
-                false,// extended
-                true,// formatted
-                false,// dependency
-                false,// logical
-                false,// authorize
-                false,// userLevelExplain
+                config, //explainConfig
                 null// cboInfo
             );
               @SuppressWarnings("unchecked")
               ExplainTask explain = (ExplainTask) TaskFactory.get(work, conf);
-              explain.initialize(conf, plan, null, null);
+              explain.initialize(queryState, plan, null, null);
               String query = plan.getQueryStr();
               JSONObject explainPlan = explain.getJSONPlan(null, work);
               String logID = conf.getLogIdVar(SessionState.get().getSessionId());

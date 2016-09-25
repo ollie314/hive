@@ -39,21 +39,23 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.security.auth.login.LoginException;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.llap.coordinator.LlapCoordinator;
 import org.apache.hadoop.hive.llap.impl.LlapProtocolClientImpl;
-import org.apache.hadoop.hive.llap.io.api.LlapProxy;
+import org.apache.hadoop.hive.llap.security.LlapTokenClient;
 import org.apache.hadoop.hive.llap.security.LlapTokenIdentifier;
-import org.apache.hadoop.hive.llap.security.LlapTokenProvider;
 import org.apache.hadoop.hive.llap.tez.LlapProtocolClientProxy;
 import org.apache.hadoop.hive.llap.tezplugins.LlapContainerLauncher;
 import org.apache.hadoop.hive.llap.tezplugins.LlapTaskCommunicator;
@@ -107,6 +109,8 @@ public class TezSessionState {
   private boolean defaultQueue = false;
   private String user;
 
+  private AtomicReference<String> ownerThread = new AtomicReference<>(null);
+
   private final Set<String> additionalFilesNotFromConf = new HashSet<String>();
   private final Set<LocalResource> localizedResources = new HashSet<LocalResource>();
   private boolean doAsEnabled;
@@ -121,7 +125,7 @@ public class TezSessionState {
 
   public String toString() {
     return "sessionId=" + sessionId + ", queueName=" + queueName + ", user=" + user
-        + ", doAs=" + doAsEnabled + ", isOpen=" + isOpen();
+        + ", doAs=" + doAsEnabled + ", isOpen=" + isOpen() + ", isDefault=" + defaultQueue;
   }
 
   /**
@@ -218,12 +222,14 @@ public class TezSessionState {
       boolean isAsync, LogHelper console, Path scratchDir) throws IOException, LoginException,
         IllegalArgumentException, URISyntaxException, TezException {
     this.conf = conf;
-    this.queueName = conf.get("tez.queue.name");
+    // TODO Why is the queue name set again. It has already been setup via setQueueName. Do only one of the two.
+    this.queueName = conf.get(TezConfiguration.TEZ_QUEUE_NAME);
     this.doAsEnabled = conf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS);
 
-    final boolean llapMode = "llap".equals(HiveConf.getVar(
+    final boolean llapMode = "llap".equalsIgnoreCase(HiveConf.getVar(
         conf, HiveConf.ConfVars.HIVE_EXECUTION_MODE));
 
+    // TODO This - at least for the session pool - will always be the hive user. How does doAs above this affect things ?
     UserGroupInformation ugi = Utils.getUGI();
     user = ugi.getShortUserName();
     LOG.info("User of session id " + sessionId + " is " + user);
@@ -274,14 +280,10 @@ public class TezSessionState {
     Credentials llapCredentials = null;
     if (llapMode) {
       if (UserGroupInformation.isSecurityEnabled()) {
-        LlapTokenProvider tp = LlapProxy.getOrInitTokenProvider(conf);
-        Token<LlapTokenIdentifier> token = tp.getDelegationToken();
-        if (LOG.isInfoEnabled()) {
-          LOG.info("Obtained a LLAP token: " + token);
-        }
         llapCredentials = new Credentials();
-        llapCredentials.addToken(LlapTokenIdentifier.KIND_NAME, token);
+        llapCredentials.addToken(LlapTokenIdentifier.KIND_NAME, getLlapToken(user, tezConfig));
       }
+      // TODO Change this to not serialize the entire Configuration - minor.
       UserPayload servicePluginPayload = TezUtils.createUserPayloadFromConf(tezConfig);
       // we need plugins to handle llap and uber mode
       servicePluginsDescriptor = ServicePluginsDescriptor.create(true,
@@ -335,6 +337,35 @@ public class TezSessionState {
     }
   }
 
+  private static Token<LlapTokenIdentifier> getLlapToken(
+      String user, final Configuration conf) throws IOException {
+    // TODO: parts of this should be moved out of TezSession to reuse the clients, but there's
+    //       no good place for that right now (HIVE-13698).
+    SessionState session = SessionState.get();
+    boolean isInHs2 = session != null && session.isHiveServerQuery();
+    Token<LlapTokenIdentifier> token = null;
+    // For Tez, we don't use appId to distinguish the tokens.
+
+    LlapCoordinator coordinator = null;
+    if (isInHs2) {
+      // We are in HS2, get the token locally.
+      // TODO: coordinator should be passed in; HIVE-13698. Must be initialized for now.
+      coordinator = LlapCoordinator.getInstance();
+      if (coordinator == null) {
+        throw new IOException("LLAP coordinator not initialized; cannot get LLAP tokens");
+      }
+      // Signing is not required for Tez.
+      token = coordinator.getLocalTokenClient(conf, user).createToken(null, null, false);
+    } else {
+      // We are not in HS2; always create a new client for now.
+      token = new LlapTokenClient(conf).getDelegationToken(null);
+    }
+    if (LOG.isInfoEnabled()) {
+      LOG.info("Obtained a LLAP token: " + token);
+    }
+    return token;
+  }
+
   private TezClient startSessionAndContainers(TezClient session, HiveConf conf,
       Map<String, LocalResource> commonLocalResources, TezConfiguration tezConfig,
       boolean isOnThread) throws TezException, IOException {
@@ -364,6 +395,15 @@ public class TezSessionState {
         //ignore
       }
       isSuccessful = true;
+      // sessionState.getQueueName() comes from cluster wide configured queue names.
+      // sessionState.getConf().get("tez.queue.name") is explicitly set by user in a session.
+      // TezSessionPoolManager sets tez.queue.name if user has specified one or use the one from
+      // cluster wide queue names.
+      // There is no way to differentiate how this was set (user vs system).
+      // Unset this after opening the session so that reopening of session uses the correct queue
+      // names i.e, if client has not died and if the user has explicitly set a queue name
+      // then reopened session will use user specified queue name else default cluster queue names.
+      conf.unset(TezConfiguration.TEZ_QUEUE_NAME);
       return session;
     } finally {
       if (isOnThread && !isSuccessful) {
@@ -530,9 +570,8 @@ public class TezSessionState {
     fs.mkdirs(tezDir, fsPermission);
     // Make sure the path is normalized (we expect validation to pass since we just created it).
     tezDir = DagUtils.validateTargetDir(tezDir, conf).getPath();
-    // don't keep the directory around on non-clean exit
-    fs.deleteOnExit(tezDir);
 
+    // Directory removal will be handled by cleanup at the SessionState level.
     return tezDir;
   }
 
@@ -615,7 +654,7 @@ public class TezSessionState {
   }
 
   public void setDefault() {
-    defaultQueue  = true;
+    defaultQueue = true;
   }
 
   public boolean isDefault() {
@@ -636,5 +675,22 @@ public class TezSessionState {
 
   public boolean getDoAsEnabled() {
     return doAsEnabled;
+  }
+
+  /** Mark session as free for use from TezTask, for safety/debugging purposes. */
+  public void markFree() {
+    if (ownerThread.getAndSet(null) == null) throw new AssertionError("Not in use");
+  }
+
+  /** Mark session as being in use from TezTask, for safety/debugging purposes. */
+  public void markInUse() {
+    String newName = Thread.currentThread().getName();
+    do {
+      String oldName = ownerThread.get();
+      if (oldName != null) {
+        throw new AssertionError("Tez session is already in use from "
+            + oldName + "; cannot use from " + newName);
+      }
+    } while (!ownerThread.compareAndSet(null, newName));
   }
 }

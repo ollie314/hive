@@ -24,6 +24,7 @@ final class TProtocolVersion {
   const HIVE_CLI_SERVICE_PROTOCOL_V6 = 5;
   const HIVE_CLI_SERVICE_PROTOCOL_V7 = 6;
   const HIVE_CLI_SERVICE_PROTOCOL_V8 = 7;
+  const HIVE_CLI_SERVICE_PROTOCOL_V9 = 8;
   static public $__names = array(
     0 => 'HIVE_CLI_SERVICE_PROTOCOL_V1',
     1 => 'HIVE_CLI_SERVICE_PROTOCOL_V2',
@@ -33,6 +34,7 @@ final class TProtocolVersion {
     5 => 'HIVE_CLI_SERVICE_PROTOCOL_V6',
     6 => 'HIVE_CLI_SERVICE_PROTOCOL_V7',
     7 => 'HIVE_CLI_SERVICE_PROTOCOL_V8',
+    8 => 'HIVE_CLI_SERVICE_PROTOCOL_V9',
   );
 }
 
@@ -109,6 +111,7 @@ final class TOperationState {
   const ERROR_STATE = 5;
   const UKNOWN_STATE = 6;
   const PENDING_STATE = 7;
+  const TIMEDOUT_STATE = 8;
   static public $__names = array(
     0 => 'INITIALIZED_STATE',
     1 => 'RUNNING_STATE',
@@ -118,6 +121,7 @@ final class TOperationState {
     5 => 'ERROR_STATE',
     6 => 'UKNOWN_STATE',
     7 => 'PENDING_STATE',
+    8 => 'TIMEDOUT_STATE',
   );
 }
 
@@ -3772,6 +3776,14 @@ class TRowSet {
    * @var \TColumn[]
    */
   public $columns = null;
+  /**
+   * @var string
+   */
+  public $binaryColumns = null;
+  /**
+   * @var int
+   */
+  public $columnCount = null;
 
   public function __construct($vals=null) {
     if (!isset(self::$_TSPEC)) {
@@ -3798,6 +3810,14 @@ class TRowSet {
             'class' => '\TColumn',
             ),
           ),
+        4 => array(
+          'var' => 'binaryColumns',
+          'type' => TType::STRING,
+          ),
+        5 => array(
+          'var' => 'columnCount',
+          'type' => TType::I32,
+          ),
         );
     }
     if (is_array($vals)) {
@@ -3809,6 +3829,12 @@ class TRowSet {
       }
       if (isset($vals['columns'])) {
         $this->columns = $vals['columns'];
+      }
+      if (isset($vals['binaryColumns'])) {
+        $this->binaryColumns = $vals['binaryColumns'];
+      }
+      if (isset($vals['columnCount'])) {
+        $this->columnCount = $vals['columnCount'];
       }
     }
   }
@@ -3875,6 +3901,20 @@ class TRowSet {
             $xfer += $input->skip($ftype);
           }
           break;
+        case 4:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->binaryColumns);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 5:
+          if ($ftype == TType::I32) {
+            $xfer += $input->readI32($this->columnCount);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
         default:
           $xfer += $input->skip($ftype);
           break;
@@ -3925,6 +3965,16 @@ class TRowSet {
         }
         $output->writeListEnd();
       }
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->binaryColumns !== null) {
+      $xfer += $output->writeFieldBegin('binaryColumns', TType::STRING, 4);
+      $xfer += $output->writeString($this->binaryColumns);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->columnCount !== null) {
+      $xfer += $output->writeFieldBegin('columnCount', TType::I32, 5);
+      $xfer += $output->writeI32($this->columnCount);
       $xfer += $output->writeFieldEnd();
     }
     $xfer += $output->writeFieldStop();
@@ -4460,7 +4510,7 @@ class TOpenSessionReq {
   /**
    * @var int
    */
-  public $client_protocol =   7;
+  public $client_protocol =   8;
   /**
    * @var string
    */
@@ -4642,7 +4692,7 @@ class TOpenSessionResp {
   /**
    * @var int
    */
-  public $serverProtocolVersion =   7;
+  public $serverProtocolVersion =   8;
   /**
    * @var \TSessionHandle
    */
@@ -5400,6 +5450,10 @@ class TExecuteStatementReq {
    * @var bool
    */
   public $runAsync = false;
+  /**
+   * @var int
+   */
+  public $queryTimeout = 0;
 
   public function __construct($vals=null) {
     if (!isset(self::$_TSPEC)) {
@@ -5429,6 +5483,10 @@ class TExecuteStatementReq {
           'var' => 'runAsync',
           'type' => TType::BOOL,
           ),
+        5 => array(
+          'var' => 'queryTimeout',
+          'type' => TType::I64,
+          ),
         );
     }
     if (is_array($vals)) {
@@ -5443,6 +5501,9 @@ class TExecuteStatementReq {
       }
       if (isset($vals['runAsync'])) {
         $this->runAsync = $vals['runAsync'];
+      }
+      if (isset($vals['queryTimeout'])) {
+        $this->queryTimeout = $vals['queryTimeout'];
       }
     }
   }
@@ -5508,6 +5569,13 @@ class TExecuteStatementReq {
             $xfer += $input->skip($ftype);
           }
           break;
+        case 5:
+          if ($ftype == TType::I64) {
+            $xfer += $input->readI64($this->queryTimeout);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
         default:
           $xfer += $input->skip($ftype);
           break;
@@ -5555,6 +5623,11 @@ class TExecuteStatementReq {
     if ($this->runAsync !== null) {
       $xfer += $output->writeFieldBegin('runAsync', TType::BOOL, 4);
       $xfer += $output->writeBool($this->runAsync);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->queryTimeout !== null) {
+      $xfer += $output->writeFieldBegin('queryTimeout', TType::I64, 5);
+      $xfer += $output->writeI64($this->queryTimeout);
       $xfer += $output->writeFieldEnd();
     }
     $xfer += $output->writeFieldStop();
@@ -7313,6 +7386,589 @@ class TGetFunctionsResp {
 
 }
 
+class TGetPrimaryKeysReq {
+  static $_TSPEC;
+
+  /**
+   * @var \TSessionHandle
+   */
+  public $sessionHandle = null;
+  /**
+   * @var string
+   */
+  public $catalogName = null;
+  /**
+   * @var string
+   */
+  public $schemaName = null;
+  /**
+   * @var string
+   */
+  public $tableName = null;
+
+  public function __construct($vals=null) {
+    if (!isset(self::$_TSPEC)) {
+      self::$_TSPEC = array(
+        1 => array(
+          'var' => 'sessionHandle',
+          'type' => TType::STRUCT,
+          'class' => '\TSessionHandle',
+          ),
+        2 => array(
+          'var' => 'catalogName',
+          'type' => TType::STRING,
+          ),
+        3 => array(
+          'var' => 'schemaName',
+          'type' => TType::STRING,
+          ),
+        4 => array(
+          'var' => 'tableName',
+          'type' => TType::STRING,
+          ),
+        );
+    }
+    if (is_array($vals)) {
+      if (isset($vals['sessionHandle'])) {
+        $this->sessionHandle = $vals['sessionHandle'];
+      }
+      if (isset($vals['catalogName'])) {
+        $this->catalogName = $vals['catalogName'];
+      }
+      if (isset($vals['schemaName'])) {
+        $this->schemaName = $vals['schemaName'];
+      }
+      if (isset($vals['tableName'])) {
+        $this->tableName = $vals['tableName'];
+      }
+    }
+  }
+
+  public function getName() {
+    return 'TGetPrimaryKeysReq';
+  }
+
+  public function read($input)
+  {
+    $xfer = 0;
+    $fname = null;
+    $ftype = 0;
+    $fid = 0;
+    $xfer += $input->readStructBegin($fname);
+    while (true)
+    {
+      $xfer += $input->readFieldBegin($fname, $ftype, $fid);
+      if ($ftype == TType::STOP) {
+        break;
+      }
+      switch ($fid)
+      {
+        case 1:
+          if ($ftype == TType::STRUCT) {
+            $this->sessionHandle = new \TSessionHandle();
+            $xfer += $this->sessionHandle->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 2:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->catalogName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 3:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->schemaName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 4:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->tableName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        default:
+          $xfer += $input->skip($ftype);
+          break;
+      }
+      $xfer += $input->readFieldEnd();
+    }
+    $xfer += $input->readStructEnd();
+    return $xfer;
+  }
+
+  public function write($output) {
+    $xfer = 0;
+    $xfer += $output->writeStructBegin('TGetPrimaryKeysReq');
+    if ($this->sessionHandle !== null) {
+      if (!is_object($this->sessionHandle)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('sessionHandle', TType::STRUCT, 1);
+      $xfer += $this->sessionHandle->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->catalogName !== null) {
+      $xfer += $output->writeFieldBegin('catalogName', TType::STRING, 2);
+      $xfer += $output->writeString($this->catalogName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->schemaName !== null) {
+      $xfer += $output->writeFieldBegin('schemaName', TType::STRING, 3);
+      $xfer += $output->writeString($this->schemaName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->tableName !== null) {
+      $xfer += $output->writeFieldBegin('tableName', TType::STRING, 4);
+      $xfer += $output->writeString($this->tableName);
+      $xfer += $output->writeFieldEnd();
+    }
+    $xfer += $output->writeFieldStop();
+    $xfer += $output->writeStructEnd();
+    return $xfer;
+  }
+
+}
+
+class TGetPrimaryKeysResp {
+  static $_TSPEC;
+
+  /**
+   * @var \TStatus
+   */
+  public $status = null;
+  /**
+   * @var \TOperationHandle
+   */
+  public $operationHandle = null;
+
+  public function __construct($vals=null) {
+    if (!isset(self::$_TSPEC)) {
+      self::$_TSPEC = array(
+        1 => array(
+          'var' => 'status',
+          'type' => TType::STRUCT,
+          'class' => '\TStatus',
+          ),
+        2 => array(
+          'var' => 'operationHandle',
+          'type' => TType::STRUCT,
+          'class' => '\TOperationHandle',
+          ),
+        );
+    }
+    if (is_array($vals)) {
+      if (isset($vals['status'])) {
+        $this->status = $vals['status'];
+      }
+      if (isset($vals['operationHandle'])) {
+        $this->operationHandle = $vals['operationHandle'];
+      }
+    }
+  }
+
+  public function getName() {
+    return 'TGetPrimaryKeysResp';
+  }
+
+  public function read($input)
+  {
+    $xfer = 0;
+    $fname = null;
+    $ftype = 0;
+    $fid = 0;
+    $xfer += $input->readStructBegin($fname);
+    while (true)
+    {
+      $xfer += $input->readFieldBegin($fname, $ftype, $fid);
+      if ($ftype == TType::STOP) {
+        break;
+      }
+      switch ($fid)
+      {
+        case 1:
+          if ($ftype == TType::STRUCT) {
+            $this->status = new \TStatus();
+            $xfer += $this->status->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 2:
+          if ($ftype == TType::STRUCT) {
+            $this->operationHandle = new \TOperationHandle();
+            $xfer += $this->operationHandle->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        default:
+          $xfer += $input->skip($ftype);
+          break;
+      }
+      $xfer += $input->readFieldEnd();
+    }
+    $xfer += $input->readStructEnd();
+    return $xfer;
+  }
+
+  public function write($output) {
+    $xfer = 0;
+    $xfer += $output->writeStructBegin('TGetPrimaryKeysResp');
+    if ($this->status !== null) {
+      if (!is_object($this->status)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('status', TType::STRUCT, 1);
+      $xfer += $this->status->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->operationHandle !== null) {
+      if (!is_object($this->operationHandle)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('operationHandle', TType::STRUCT, 2);
+      $xfer += $this->operationHandle->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    $xfer += $output->writeFieldStop();
+    $xfer += $output->writeStructEnd();
+    return $xfer;
+  }
+
+}
+
+class TGetCrossReferenceReq {
+  static $_TSPEC;
+
+  /**
+   * @var \TSessionHandle
+   */
+  public $sessionHandle = null;
+  /**
+   * @var string
+   */
+  public $parentCatalogName = null;
+  /**
+   * @var string
+   */
+  public $parentSchemaName = null;
+  /**
+   * @var string
+   */
+  public $parentTableName = null;
+  /**
+   * @var string
+   */
+  public $foreignCatalogName = null;
+  /**
+   * @var string
+   */
+  public $foreignSchemaName = null;
+  /**
+   * @var string
+   */
+  public $foreignTableName = null;
+
+  public function __construct($vals=null) {
+    if (!isset(self::$_TSPEC)) {
+      self::$_TSPEC = array(
+        1 => array(
+          'var' => 'sessionHandle',
+          'type' => TType::STRUCT,
+          'class' => '\TSessionHandle',
+          ),
+        2 => array(
+          'var' => 'parentCatalogName',
+          'type' => TType::STRING,
+          ),
+        3 => array(
+          'var' => 'parentSchemaName',
+          'type' => TType::STRING,
+          ),
+        4 => array(
+          'var' => 'parentTableName',
+          'type' => TType::STRING,
+          ),
+        5 => array(
+          'var' => 'foreignCatalogName',
+          'type' => TType::STRING,
+          ),
+        6 => array(
+          'var' => 'foreignSchemaName',
+          'type' => TType::STRING,
+          ),
+        7 => array(
+          'var' => 'foreignTableName',
+          'type' => TType::STRING,
+          ),
+        );
+    }
+    if (is_array($vals)) {
+      if (isset($vals['sessionHandle'])) {
+        $this->sessionHandle = $vals['sessionHandle'];
+      }
+      if (isset($vals['parentCatalogName'])) {
+        $this->parentCatalogName = $vals['parentCatalogName'];
+      }
+      if (isset($vals['parentSchemaName'])) {
+        $this->parentSchemaName = $vals['parentSchemaName'];
+      }
+      if (isset($vals['parentTableName'])) {
+        $this->parentTableName = $vals['parentTableName'];
+      }
+      if (isset($vals['foreignCatalogName'])) {
+        $this->foreignCatalogName = $vals['foreignCatalogName'];
+      }
+      if (isset($vals['foreignSchemaName'])) {
+        $this->foreignSchemaName = $vals['foreignSchemaName'];
+      }
+      if (isset($vals['foreignTableName'])) {
+        $this->foreignTableName = $vals['foreignTableName'];
+      }
+    }
+  }
+
+  public function getName() {
+    return 'TGetCrossReferenceReq';
+  }
+
+  public function read($input)
+  {
+    $xfer = 0;
+    $fname = null;
+    $ftype = 0;
+    $fid = 0;
+    $xfer += $input->readStructBegin($fname);
+    while (true)
+    {
+      $xfer += $input->readFieldBegin($fname, $ftype, $fid);
+      if ($ftype == TType::STOP) {
+        break;
+      }
+      switch ($fid)
+      {
+        case 1:
+          if ($ftype == TType::STRUCT) {
+            $this->sessionHandle = new \TSessionHandle();
+            $xfer += $this->sessionHandle->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 2:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->parentCatalogName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 3:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->parentSchemaName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 4:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->parentTableName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 5:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->foreignCatalogName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 6:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->foreignSchemaName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 7:
+          if ($ftype == TType::STRING) {
+            $xfer += $input->readString($this->foreignTableName);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        default:
+          $xfer += $input->skip($ftype);
+          break;
+      }
+      $xfer += $input->readFieldEnd();
+    }
+    $xfer += $input->readStructEnd();
+    return $xfer;
+  }
+
+  public function write($output) {
+    $xfer = 0;
+    $xfer += $output->writeStructBegin('TGetCrossReferenceReq');
+    if ($this->sessionHandle !== null) {
+      if (!is_object($this->sessionHandle)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('sessionHandle', TType::STRUCT, 1);
+      $xfer += $this->sessionHandle->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->parentCatalogName !== null) {
+      $xfer += $output->writeFieldBegin('parentCatalogName', TType::STRING, 2);
+      $xfer += $output->writeString($this->parentCatalogName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->parentSchemaName !== null) {
+      $xfer += $output->writeFieldBegin('parentSchemaName', TType::STRING, 3);
+      $xfer += $output->writeString($this->parentSchemaName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->parentTableName !== null) {
+      $xfer += $output->writeFieldBegin('parentTableName', TType::STRING, 4);
+      $xfer += $output->writeString($this->parentTableName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->foreignCatalogName !== null) {
+      $xfer += $output->writeFieldBegin('foreignCatalogName', TType::STRING, 5);
+      $xfer += $output->writeString($this->foreignCatalogName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->foreignSchemaName !== null) {
+      $xfer += $output->writeFieldBegin('foreignSchemaName', TType::STRING, 6);
+      $xfer += $output->writeString($this->foreignSchemaName);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->foreignTableName !== null) {
+      $xfer += $output->writeFieldBegin('foreignTableName', TType::STRING, 7);
+      $xfer += $output->writeString($this->foreignTableName);
+      $xfer += $output->writeFieldEnd();
+    }
+    $xfer += $output->writeFieldStop();
+    $xfer += $output->writeStructEnd();
+    return $xfer;
+  }
+
+}
+
+class TGetCrossReferenceResp {
+  static $_TSPEC;
+
+  /**
+   * @var \TStatus
+   */
+  public $status = null;
+  /**
+   * @var \TOperationHandle
+   */
+  public $operationHandle = null;
+
+  public function __construct($vals=null) {
+    if (!isset(self::$_TSPEC)) {
+      self::$_TSPEC = array(
+        1 => array(
+          'var' => 'status',
+          'type' => TType::STRUCT,
+          'class' => '\TStatus',
+          ),
+        2 => array(
+          'var' => 'operationHandle',
+          'type' => TType::STRUCT,
+          'class' => '\TOperationHandle',
+          ),
+        );
+    }
+    if (is_array($vals)) {
+      if (isset($vals['status'])) {
+        $this->status = $vals['status'];
+      }
+      if (isset($vals['operationHandle'])) {
+        $this->operationHandle = $vals['operationHandle'];
+      }
+    }
+  }
+
+  public function getName() {
+    return 'TGetCrossReferenceResp';
+  }
+
+  public function read($input)
+  {
+    $xfer = 0;
+    $fname = null;
+    $ftype = 0;
+    $fid = 0;
+    $xfer += $input->readStructBegin($fname);
+    while (true)
+    {
+      $xfer += $input->readFieldBegin($fname, $ftype, $fid);
+      if ($ftype == TType::STOP) {
+        break;
+      }
+      switch ($fid)
+      {
+        case 1:
+          if ($ftype == TType::STRUCT) {
+            $this->status = new \TStatus();
+            $xfer += $this->status->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        case 2:
+          if ($ftype == TType::STRUCT) {
+            $this->operationHandle = new \TOperationHandle();
+            $xfer += $this->operationHandle->read($input);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
+        default:
+          $xfer += $input->skip($ftype);
+          break;
+      }
+      $xfer += $input->readFieldEnd();
+    }
+    $xfer += $input->readStructEnd();
+    return $xfer;
+  }
+
+  public function write($output) {
+    $xfer = 0;
+    $xfer += $output->writeStructBegin('TGetCrossReferenceResp');
+    if ($this->status !== null) {
+      if (!is_object($this->status)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('status', TType::STRUCT, 1);
+      $xfer += $this->status->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->operationHandle !== null) {
+      if (!is_object($this->operationHandle)) {
+        throw new TProtocolException('Bad type in structure.', TProtocolException::INVALID_DATA);
+      }
+      $xfer += $output->writeFieldBegin('operationHandle', TType::STRUCT, 2);
+      $xfer += $this->operationHandle->write($output);
+      $xfer += $output->writeFieldEnd();
+    }
+    $xfer += $output->writeFieldStop();
+    $xfer += $output->writeStructEnd();
+    return $xfer;
+  }
+
+}
+
 class TGetOperationStatusReq {
   static $_TSPEC;
 
@@ -7428,6 +8084,10 @@ class TGetOperationStatusResp {
    * @var int
    */
   public $operationCompleted = null;
+  /**
+   * @var bool
+   */
+  public $hasResultSet = null;
 
   public function __construct($vals=null) {
     if (!isset(self::$_TSPEC)) {
@@ -7465,6 +8125,10 @@ class TGetOperationStatusResp {
           'var' => 'operationCompleted',
           'type' => TType::I64,
           ),
+        9 => array(
+          'var' => 'hasResultSet',
+          'type' => TType::BOOL,
+          ),
         );
     }
     if (is_array($vals)) {
@@ -7491,6 +8155,9 @@ class TGetOperationStatusResp {
       }
       if (isset($vals['operationCompleted'])) {
         $this->operationCompleted = $vals['operationCompleted'];
+      }
+      if (isset($vals['hasResultSet'])) {
+        $this->hasResultSet = $vals['hasResultSet'];
       }
     }
   }
@@ -7571,6 +8238,13 @@ class TGetOperationStatusResp {
             $xfer += $input->skip($ftype);
           }
           break;
+        case 9:
+          if ($ftype == TType::BOOL) {
+            $xfer += $input->readBool($this->hasResultSet);
+          } else {
+            $xfer += $input->skip($ftype);
+          }
+          break;
         default:
           $xfer += $input->skip($ftype);
           break;
@@ -7625,6 +8299,11 @@ class TGetOperationStatusResp {
     if ($this->operationCompleted !== null) {
       $xfer += $output->writeFieldBegin('operationCompleted', TType::I64, 8);
       $xfer += $output->writeI64($this->operationCompleted);
+      $xfer += $output->writeFieldEnd();
+    }
+    if ($this->hasResultSet !== null) {
+      $xfer += $output->writeFieldBegin('hasResultSet', TType::BOOL, 9);
+      $xfer += $output->writeBool($this->hasResultSet);
       $xfer += $output->writeFieldEnd();
     }
     $xfer += $output->writeFieldStop();

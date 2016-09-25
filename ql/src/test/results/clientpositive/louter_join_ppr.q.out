@@ -20,90 +20,6 @@ EXPLAIN EXTENDED
  SELECT a.key, a.value, b.key, b.value
  WHERE a.key > 10 AND a.key < 20 AND b.key > 15 AND b.key < 25
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_TABREF
-            TOK_TABNAME
-               src
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            b
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     a
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  ds
-               '2008-04-08'
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               value
-      TOK_WHERE
-         AND
-            AND
-               AND
-                  >
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     10
-                  <
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     20
-               >
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     key
-                  15
-            <
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  key
-               25
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -163,7 +79,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -183,7 +99,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -210,7 +126,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 11
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -256,7 +172,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 12
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -396,90 +312,6 @@ POSTHOOK: query: EXPLAIN EXTENDED
  SELECT a.key, a.value, b.key, b.value
  WHERE a.key > 10 AND a.key < 20 AND b.key > 15 AND b.key < 25
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               src
-            b
-         AND
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     a
-                  key
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  key
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     a
-                  ds
-               '2008-04-08'
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               value
-      TOK_WHERE
-         AND
-            AND
-               AND
-                  >
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     10
-                  <
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     20
-               >
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     key
-                  15
-            <
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  key
-               25
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -539,7 +371,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -559,7 +391,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -586,7 +418,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 11
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -632,7 +464,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 12
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -678,7 +510,7 @@ STAGE PLANS:
               ds 2008-04-09
               hr 11
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -724,7 +556,7 @@ STAGE PLANS:
               ds 2008-04-09
               hr 12
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -879,90 +711,6 @@ POSTHOOK: query: EXPLAIN EXTENDED
  SELECT a.key, a.value, b.key, b.value
  WHERE a.key > 10 AND a.key < 20 AND b.key > 15 AND b.key < 25 AND b.ds = '2008-04-08'
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_TABREF
-            TOK_TABNAME
-               src
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            b
-         =
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               value
-      TOK_WHERE
-         AND
-            AND
-               AND
-                  AND
-                     >
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        10
-                     <
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        20
-                  >
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                     15
-               <
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     key
-                  25
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     b
-                  ds
-               '2008-04-08'
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1022,7 +770,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1042,7 +790,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -1069,7 +817,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 11
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1115,7 +863,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 12
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1251,90 +999,6 @@ POSTHOOK: query: EXPLAIN EXTENDED
  SELECT a.key, a.value, b.key, b.value
  WHERE a.key > 10 AND a.key < 20 AND b.key > 15 AND b.key < 25 AND a.ds = '2008-04-08'
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_TABREF
-            TOK_TABNAME
-               srcpart
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               src
-            b
-         =
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  a
-               value
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  b
-               value
-      TOK_WHERE
-         AND
-            AND
-               AND
-                  AND
-                     >
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        10
-                     <
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        20
-                  >
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                     15
-               <
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     key
-                  25
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     a
-                  ds
-               '2008-04-08'
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1394,7 +1058,7 @@ STAGE PLANS:
             input format: org.apache.hadoop.mapred.TextInputFormat
             output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1414,7 +1078,7 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
-                COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                 bucket_count -1
                 columns key,value
                 columns.comments 'default','default'
@@ -1441,7 +1105,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 11
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'
@@ -1487,7 +1151,7 @@ STAGE PLANS:
               ds 2008-04-08
               hr 12
             properties:
-              COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+              COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
               bucket_count -1
               columns key,value
               columns.comments 'default','default'

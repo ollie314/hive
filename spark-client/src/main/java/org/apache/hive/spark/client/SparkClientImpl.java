@@ -17,6 +17,8 @@
 
 package org.apache.hive.spark.client;
 
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHENTICATION;
+
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
@@ -42,6 +44,7 @@ import java.io.Serializable;
 import java.io.Writer;
 import java.net.URI;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -68,6 +71,7 @@ class SparkClientImpl implements SparkClient {
   private static final Logger LOG = LoggerFactory.getLogger(SparkClientImpl.class);
 
   private static final long DEFAULT_SHUTDOWN_TIMEOUT = 10000; // In milliseconds
+  private static final long MAX_ERR_LOG_LINES_FOR_RPC = 1000;
 
   private static final String OSX_TEST_OPTS = "SPARK_OSX_TEST_OPTS";
   private static final String SPARK_HOME_ENV = "SPARK_HOME";
@@ -231,12 +235,12 @@ class SparkClientImpl implements SparkClient {
       // If a Spark installation is provided, use the spark-submit script. Otherwise, call the
       // SparkSubmit class directly, which has some caveats (like having to provide a proper
       // version of Guava on the classpath depending on the deploy mode).
-      String sparkHome = conf.get(SPARK_HOME_KEY);
+      String sparkHome = Strings.emptyToNull(conf.get(SPARK_HOME_KEY));
       if (sparkHome == null) {
-        sparkHome = System.getenv(SPARK_HOME_ENV);
+        sparkHome = Strings.emptyToNull(System.getenv(SPARK_HOME_ENV));
       }
       if (sparkHome == null) {
-        sparkHome = System.getProperty(SPARK_HOME_KEY);
+        sparkHome = Strings.emptyToNull(System.getProperty(SPARK_HOME_KEY));
       }
       String sparkLogDir = conf.get("hive.spark.log.dir");
       if (sparkLogDir == null) {
@@ -324,17 +328,6 @@ class SparkClientImpl implements SparkClient {
 
       List<String> argv = Lists.newArrayList();
 
-      if (hiveConf.getVar(HiveConf.ConfVars.HIVE_SERVER2_AUTHENTICATION).equalsIgnoreCase("kerberos")) {
-          argv.add("kinit");
-          String principal = SecurityUtil.getServerPrincipal(hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL),
-              "0.0.0.0");
-          String keyTabFile = hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_KEYTAB);
-          argv.add(principal);
-          argv.add("-k");
-          argv.add("-t");
-          argv.add(keyTabFile + ";");
-      }
-
       if (sparkHome != null) {
         argv.add(new File(sparkHome, "bin/spark-submit").getAbsolutePath());
       } else {
@@ -372,6 +365,16 @@ class SparkClientImpl implements SparkClient {
         argv.add("org.apache.spark.deploy.SparkSubmit");
       }
 
+      if ("kerberos".equals(hiveConf.get(HADOOP_SECURITY_AUTHENTICATION))) {
+          String principal = SecurityUtil.getServerPrincipal(hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_PRINCIPAL),
+              "0.0.0.0");
+          String keyTabFile = hiveConf.getVar(ConfVars.HIVE_SERVER2_KERBEROS_KEYTAB);
+          argv.add("--principal");
+          argv.add(principal);
+          argv.add("--keytab");
+          argv.add(keyTabFile);
+      }
+
       if (master.equals("yarn-cluster")) {
         String executorCores = conf.get("spark.executor.cores");
         if (executorCores != null) {
@@ -391,7 +394,6 @@ class SparkClientImpl implements SparkClient {
           argv.add(numOfExecutors);
         }
       }
-
       if (hiveConf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS)) {
         try {
           String currentUser = Utils.getUGI().getShortUserName();
@@ -445,8 +447,9 @@ class SparkClientImpl implements SparkClient {
 
       final Process child = pb.start();
       int childId = childIdGenerator.incrementAndGet();
-      redirect("stdout-redir-" + childId, child.getInputStream());
-      redirect("stderr-redir-" + childId, child.getErrorStream());
+      final List<String> childErrorLog = new ArrayList<String>();
+      redirect("stdout-redir-" + childId, new Redirector(child.getInputStream()));
+      redirect("stderr-redir-" + childId, new Redirector(child.getErrorStream(), childErrorLog));
 
       runnable = new Runnable() {
         @Override
@@ -454,8 +457,15 @@ class SparkClientImpl implements SparkClient {
           try {
             int exitCode = child.waitFor();
             if (exitCode != 0) {
-              rpcServer.cancelClient(clientId, "Child process exited before connecting back");
-              LOG.warn("Child process exited with code {}.", exitCode);
+              StringBuilder errStr = new StringBuilder();
+              for (String s : childErrorLog) {
+                errStr.append(s);
+                errStr.append('\n');
+              }
+
+              rpcServer.cancelClient(clientId,
+                  "Child process exited before connecting back with error log " + errStr.toString());
+              LOG.warn("Child process exited with code {}", exitCode);
             }
           } catch (InterruptedException ie) {
             LOG.warn("Waiting thread interrupted, killing child process.");
@@ -475,8 +485,8 @@ class SparkClientImpl implements SparkClient {
     return thread;
   }
 
-  private void redirect(String name, InputStream in) {
-    Thread thread = new Thread(new Redirector(in));
+  private void redirect(String name, Redirector redirector) {
+    Thread thread = new Thread(redirector);
     thread.setName(name);
     thread.setDaemon(true);
     thread.start();
@@ -587,9 +597,16 @@ class SparkClientImpl implements SparkClient {
   private class Redirector implements Runnable {
 
     private final BufferedReader in;
+    private List<String> errLogs;
+    private int numErrLogLines = 0;
 
     Redirector(InputStream in) {
       this.in = new BufferedReader(new InputStreamReader(in));
+    }
+
+    Redirector(InputStream in, List<String> errLogs) {
+      this.in = new BufferedReader(new InputStreamReader(in));
+      this.errLogs = errLogs;
     }
 
     @Override
@@ -598,6 +615,19 @@ class SparkClientImpl implements SparkClient {
         String line = null;
         while ((line = in.readLine()) != null) {
           LOG.info(line);
+          if (errLogs != null) {
+            if (numErrLogLines++ < MAX_ERR_LOG_LINES_FOR_RPC) {
+              errLogs.add(line);
+            }
+          }
+        }
+      } catch (IOException e) {
+        if (isAlive) {
+          LOG.warn("I/O error in redirector thread.", e);
+        } else {
+          // When stopping the remote driver the process might be destroyed during reading from the stream.
+          // We should not log the related exceptions in a visible level as they might mislead the user.
+          LOG.debug("I/O error in redirector thread while stopping the remote driver", e);
         }
       } catch (Exception e) {
         LOG.warn("Error in redirector thread.", e);

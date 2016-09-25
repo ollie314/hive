@@ -62,9 +62,8 @@ public class MergeFileRecordProcessor extends RecordProcessor {
   private String cacheKey;
   private MergeFileWork mfWork;
   MRInputLegacy mrInput = null;
-  private boolean abort = false;
   private final Object[] row = new Object[2];
-  ObjectCache cache;
+  org.apache.hadoop.hive.ql.exec.ObjectCache cache;
 
   public MergeFileRecordProcessor(final JobConf jconf, final ProcessorContext context) {
     super(jconf, context);
@@ -74,6 +73,7 @@ public class MergeFileRecordProcessor extends RecordProcessor {
   void init(
       MRTaskReporter mrReporter, Map<String, LogicalInput> inputs,
       Map<String, LogicalOutput> outputs) throws Exception {
+    // TODO HIVE-14042. Abort handling.
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_INIT_OPERATORS);
     super.init(mrReporter, inputs, outputs);
     execContext = new ExecMapperContext(jconf);
@@ -95,8 +95,7 @@ public class MergeFileRecordProcessor extends RecordProcessor {
     }
 
     String queryId = HiveConf.getVar(jconf, HiveConf.ConfVars.HIVEQUERYID);
-    org.apache.hadoop.hive.ql.exec.ObjectCache cache = ObjectCacheFactory
-      .getCache(jconf, queryId);
+    cache = ObjectCacheFactory.getCache(jconf, queryId, true);
 
     try {
       execContext.setJc(jconf);
@@ -135,6 +134,10 @@ public class MergeFileRecordProcessor extends RecordProcessor {
         // will this be true here?
         // Don't create a new object if we are already out of memory
         throw (OutOfMemoryError) e;
+      } else if (e instanceof InterruptedException) {
+        l4j.info("Hit an interrupt while initializing MergeFileRecordProcessor. Message={}",
+            e.getMessage());
+        throw (InterruptedException) e;
       } else {
         throw new RuntimeException("Map operator initialization failed", e);
       }
@@ -158,7 +161,7 @@ public class MergeFileRecordProcessor extends RecordProcessor {
 
   @Override
   void abort() {
-    abort = true;
+    super.abort();
   }
 
   @Override

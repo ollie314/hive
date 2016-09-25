@@ -48,6 +48,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,12 +59,14 @@ public class TestDbNotificationListener {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestDbNotificationListener.class.getName());
   private static final int EVENTS_TTL = 30;
+  private static final int CLEANUP_SLEEP_TIME = 10;
   private static Map<String, String> emptyParameters = new HashMap<String, String>();
   private static IMetaStoreClient msClient;
   private static Driver driver;
   private int startTime;
   private long firstEventId;
 
+  @SuppressWarnings("rawtypes")
   @BeforeClass
   public static void connectToMetastore() throws Exception {
     HiveConf conf = new HiveConf();
@@ -73,6 +76,19 @@ public class TestDbNotificationListener {
     conf.setBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
     conf.setBoolVar(HiveConf.ConfVars.FIRE_EVENTS_FOR_DML, true);
     conf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
+    Class dbNotificationListener =
+        Class.forName("org.apache.hive.hcatalog.listener.DbNotificationListener");
+    Class[] classes = dbNotificationListener.getDeclaredClasses();
+    for (Class c : classes) {
+      if (c.getName().endsWith("CleanerThread")) {
+        Field sleepTimeField = c.getDeclaredField("sleepTime");
+        sleepTimeField.setAccessible(true);
+        sleepTimeField.set(null, CLEANUP_SLEEP_TIME * 1000);
+      }
+    }
+    conf
+    .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
+        "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
     SessionState.start(new CliSessionState(conf));
     msClient = new HiveMetaStoreClient(conf);
     driver = new Driver(conf);
@@ -531,12 +547,15 @@ public class TestDbNotificationListener {
     driver.run("insert into table sip partition (ds) values (3, 'tomorrow')");
     driver.run("alter table sip drop partition (ds = 'tomorrow')");
 
+    driver.run("insert into table sip partition (ds) values (42, 'todaytwo')");
+    driver.run("insert overwrite table sip partition(ds='todaytwo') select c from sip where 'ds'='today'");
+
     NotificationEventResponse rsp = msClient.getNextNotification(firstEventId, 0, null);
 
     for (NotificationEvent ne : rsp.getEvents()) LOG.debug("EVENT: " + ne.getMessage());
     // For reasons not clear to me there's one or more alter partitions after add partition and
     // insert.
-    assertEquals(19, rsp.getEventsSize());
+    assertEquals(24, rsp.getEventsSize());
     NotificationEvent event = rsp.getEvents().get(1);
     assertEquals(firstEventId + 2, event.getEventId());
     assertEquals(HCatConstants.HCAT_ADD_PARTITION_EVENT, event.getEventType());
@@ -566,7 +585,29 @@ public class TestDbNotificationListener {
     event = rsp.getEvents().get(18);
     assertEquals(firstEventId + 19, event.getEventId());
     assertEquals(HCatConstants.HCAT_DROP_PARTITION_EVENT, event.getEventType());
-  }
+
+    event = rsp.getEvents().get(19);
+    assertEquals(firstEventId + 20, event.getEventId());
+    assertEquals(HCatConstants.HCAT_ADD_PARTITION_EVENT, event.getEventType());
+    event = rsp.getEvents().get(20);
+    assertEquals(firstEventId + 21, event.getEventId());
+    assertEquals(HCatConstants.HCAT_ALTER_PARTITION_EVENT, event.getEventType());
+    assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
+
+    event = rsp.getEvents().get(21);
+    assertEquals(firstEventId + 22, event.getEventId());
+    assertEquals(HCatConstants.HCAT_INSERT_EVENT, event.getEventType());
+    assertTrue(event.getMessage().matches(".*\"files\":\\[\\].*")); // replace-overwrite introduces no new files
+    event = rsp.getEvents().get(22);
+    assertEquals(firstEventId + 23, event.getEventId());
+    assertEquals(HCatConstants.HCAT_ALTER_PARTITION_EVENT, event.getEventType());
+    assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
+    event = rsp.getEvents().get(23);
+    assertEquals(firstEventId + 24, event.getEventId());
+    assertEquals(HCatConstants.HCAT_ALTER_PARTITION_EVENT, event.getEventType());
+    assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
+
+   }
 
   @Test
   public void cleanupNotifs() throws Exception {
@@ -574,13 +615,16 @@ public class TestDbNotificationListener {
     msClient.createDatabase(db);
     msClient.dropDatabase("cleanup1");
 
+    LOG.info("Pulling events immediately after createDatabase/dropDatabase");
     NotificationEventResponse rsp = msClient.getNextNotification(firstEventId, 0, null);
     assertEquals(2, rsp.getEventsSize());
 
     // sleep for expiry time, and then fetch again
     Thread.sleep(EVENTS_TTL * 2 * 1000); // sleep twice the TTL interval - things should have been cleaned by then.
 
+    LOG.info("Pulling events again after cleanup");
     NotificationEventResponse rsp2 = msClient.getNextNotification(firstEventId, 0, null);
+    LOG.info("second trigger done");
     assertEquals(0, rsp2.getEventsSize());
   }
 }

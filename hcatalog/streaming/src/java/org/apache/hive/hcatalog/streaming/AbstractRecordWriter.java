@@ -19,6 +19,7 @@
 package org.apache.hive.hcatalog.streaming;
 
 
+import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
@@ -43,9 +44,11 @@ import org.apache.thrift.TException;
 
 import java.io.IOException;
 
+import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 
 
 public abstract class AbstractRecordWriter implements RecordWriter {
@@ -68,34 +71,59 @@ public abstract class AbstractRecordWriter implements RecordWriter {
   private Long curBatchMinTxnId;
   private Long curBatchMaxTxnId;
 
+  private static final class TableWriterPair {
+    private final Table tbl;
+    private final Path partitionPath;
+    TableWriterPair(Table t, Path p) {
+      tbl = t;
+      partitionPath = p;
+    }
+  }
+  /**
+   * @deprecated As of release 1.3/2.1.  Replaced by {@link #AbstractRecordWriter(HiveEndPoint, HiveConf, StreamingConnection)}
+   */
   protected AbstractRecordWriter(HiveEndPoint endPoint, HiveConf conf)
-          throws ConnectionError, StreamingException {
-    this.endPoint = endPoint;
+    throws ConnectionError, StreamingException {
+    this(endPoint, conf, null);
+  }
+  protected AbstractRecordWriter(HiveEndPoint endPoint2, HiveConf conf, StreamingConnection conn)
+          throws StreamingException {
+    this.endPoint = endPoint2;
     this.conf = conf!=null ? conf
                 : HiveEndPoint.createHiveConf(DelimitedInputWriter.class, endPoint.metaStoreUri);
     try {
       msClient = HCatUtil.getHiveMetastoreClient(this.conf);
-      this.tbl = msClient.getTable(endPoint.database, endPoint.table);
-      this.partitionPath = getPathForEndPoint(msClient, endPoint);
-      this.totalBuckets = tbl.getSd().getNumBuckets();
-      if(totalBuckets <= 0) {
-        throw new StreamingException("Cannot stream to table that has not been bucketed : "
-                + endPoint);
+      UserGroupInformation ugi = conn != null ? conn.getUserGroupInformation() : null;
+      if (ugi == null) {
+        this.tbl = msClient.getTable(endPoint.database, endPoint.table);
+        this.partitionPath = getPathForEndPoint(msClient, endPoint);
+      } else {
+        TableWriterPair twp = ugi.doAs(
+          new PrivilegedExceptionAction<TableWriterPair>() {
+            @Override
+            public TableWriterPair run() throws Exception {
+              return new TableWriterPair(msClient.getTable(endPoint.database, endPoint.table),
+                getPathForEndPoint(msClient, endPoint));
+            }
+          });
+        this.tbl = twp.tbl;
+        this.partitionPath = twp.partitionPath;
       }
-      this.bucketIds = getBucketColIDs(tbl.getSd().getBucketCols(), tbl.getSd().getCols()) ;
+      this.totalBuckets = tbl.getSd().getNumBuckets();
+      if (totalBuckets <= 0) {
+        throw new StreamingException("Cannot stream to table that has not been bucketed : "
+          + endPoint);
+      }
+      this.bucketIds = getBucketColIDs(tbl.getSd().getBucketCols(), tbl.getSd().getCols());
       this.bucketFieldData = new Object[bucketIds.size()];
       String outFormatName = this.tbl.getSd().getOutputFormat();
-      outf = (AcidOutputFormat<?,?>) ReflectionUtils.newInstance(JavaUtils.loadClass(outFormatName), conf);
+      outf = (AcidOutputFormat<?, ?>) ReflectionUtils.newInstance(JavaUtils.loadClass(outFormatName), conf);
       bucketFieldData = new Object[bucketIds.size()];
-    } catch (MetaException e) {
-      throw new ConnectionError(endPoint, e);
-    } catch (NoSuchObjectException e) {
-      throw new ConnectionError(endPoint, e);
-    } catch (TException e) {
-      throw new StreamingException(e.getMessage(), e);
-    } catch (ClassNotFoundException e) {
-      throw new StreamingException(e.getMessage(), e);
-    } catch (IOException e) {
+    } catch(InterruptedException e) {
+      throw new StreamingException(endPoint2.toString(), e);
+    } catch (MetaException | NoSuchObjectException e) {
+      throw new ConnectionError(endPoint2, e);
+    } catch (TException | ClassNotFoundException | IOException e) {
       throw new StreamingException(e.getMessage(), e);
     }
   }
@@ -150,7 +178,9 @@ public abstract class AbstractRecordWriter implements RecordWriter {
   public void flush() throws StreamingIOFailure {
     try {
       for (RecordUpdater updater : updaters) {
-        updater.flush();
+        if (updater != null) {
+          updater.flush();
+        }
       }
     } catch (IOException e) {
       throw new StreamingIOFailure("Unable to flush recordUpdater", e);
@@ -170,15 +200,11 @@ public abstract class AbstractRecordWriter implements RecordWriter {
   @Override
   public void newBatch(Long minTxnId, Long maxTxnID)
           throws StreamingIOFailure, SerializationError {
-    try {
-      LOG.debug("Creating Record updater");
-      curBatchMinTxnId = minTxnId;
-      curBatchMaxTxnId = maxTxnID;
-      updaters = createRecordUpdaters(totalBuckets, minTxnId, maxTxnID);
-    } catch (IOException e) {
-      String errMsg = "Failed creating RecordUpdaterS for " + getWatermark();
-      LOG.error(errMsg, e);
-      throw new StreamingIOFailure(errMsg, e);
+    curBatchMinTxnId = minTxnId;
+    curBatchMaxTxnId = maxTxnID;
+    updaters = new ArrayList<RecordUpdater>(totalBuckets);
+    for (int bucket = 0; bucket < totalBuckets; bucket++) {
+      updaters.add(bucket, null);
     }
   }
 
@@ -186,13 +212,14 @@ public abstract class AbstractRecordWriter implements RecordWriter {
   public void closeBatch() throws StreamingIOFailure {
     boolean haveError = false;
     for (RecordUpdater updater : updaters) {
-      try {
-        //try not to leave any files open
-        updater.close(false);
-      }
-      catch(Exception ex) {
-        haveError = true;
-        LOG.error("Unable to close " + updater + " due to: " + ex.getMessage(), ex);
+      if (updater != null) {
+        try {
+          //try not to leave any files open
+          updater.close(false);
+        } catch (Exception ex) {
+          haveError = true;
+          LOG.error("Unable to close " + updater + " due to: " + ex.getMessage(), ex);
+        }
       }
     }
     updaters.clear();
@@ -224,24 +251,19 @@ public abstract class AbstractRecordWriter implements RecordWriter {
     return bucketFieldData;
   }
 
-
-
-  private ArrayList<RecordUpdater> createRecordUpdaters(int bucketCount, Long minTxnId, Long maxTxnID)
-          throws IOException, SerializationError {
-    ArrayList<RecordUpdater> result = new ArrayList<RecordUpdater>(bucketCount);
-    for (int bucket = 0; bucket < bucketCount; bucket++) {
-      result.add(createRecordUpdater(bucket, minTxnId, maxTxnID) );
-    }
-    return result;
-  }
-
   private RecordUpdater createRecordUpdater(int bucketId, Long minTxnId, Long maxTxnID)
           throws IOException, SerializationError {
     try {
+      // Initialize table properties from the table parameters. This is required because the table
+      // may define certain table parameters that may be required while writing. The table parameter
+      // 'transactional_properties' is one such example.
+      Properties tblProperties = new Properties();
+      tblProperties.putAll(tbl.getParameters());
       return  outf.getRecordUpdater(partitionPath,
               new AcidOutputFormat.Options(conf)
                       .inspector(getSerde().getObjectInspector())
                       .bucket(bucketId)
+                      .tableProperties(tblProperties)
                       .minimumTransactionId(minTxnId)
                       .maximumTransactionId(maxTxnID)
                       .statementId(-1)
@@ -250,6 +272,21 @@ public abstract class AbstractRecordWriter implements RecordWriter {
       throw new SerializationError("Failed to get object inspector from Serde "
               + getSerde().getClass().getName(), e);
     }
+  }
+
+  RecordUpdater getRecordUpdater(int bucketId) throws StreamingIOFailure, SerializationError {
+    RecordUpdater recordUpdater = updaters.get(bucketId);
+    if (recordUpdater == null) {
+      try {
+        recordUpdater = createRecordUpdater(bucketId, curBatchMinTxnId, curBatchMaxTxnId);
+      } catch (IOException e) {
+        String errMsg = "Failed creating RecordUpdater for " + getWatermark();
+        LOG.error(errMsg, e);
+        throw new StreamingIOFailure(errMsg, e);
+      }
+      updaters.set(bucketId, recordUpdater);
+    }
+    return recordUpdater;
   }
 
   private Path getPathForEndPoint(IMetaStoreClient msClient, HiveEndPoint endPoint)

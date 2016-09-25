@@ -28,7 +28,8 @@ struct TProtocolVersion {
     HIVE_CLI_SERVICE_PROTOCOL_V5 = 4,
     HIVE_CLI_SERVICE_PROTOCOL_V6 = 5,
     HIVE_CLI_SERVICE_PROTOCOL_V7 = 6,
-    HIVE_CLI_SERVICE_PROTOCOL_V8 = 7
+    HIVE_CLI_SERVICE_PROTOCOL_V8 = 7,
+    HIVE_CLI_SERVICE_PROTOCOL_V9 = 8
   };
 };
 
@@ -84,7 +85,8 @@ struct TOperationState {
     CLOSED_STATE = 4,
     ERROR_STATE = 5,
     UKNOWN_STATE = 6,
-    PENDING_STATE = 7
+    PENDING_STATE = 7,
+    TIMEDOUT_STATE = 8
   };
 };
 
@@ -296,6 +298,14 @@ class TGetColumnsResp;
 class TGetFunctionsReq;
 
 class TGetFunctionsResp;
+
+class TGetPrimaryKeysReq;
+
+class TGetPrimaryKeysResp;
+
+class TGetCrossReferenceReq;
+
+class TGetCrossReferenceResp;
 
 class TGetOperationStatusReq;
 
@@ -1809,8 +1819,10 @@ inline std::ostream& operator<<(std::ostream& out, const TColumn& obj)
 }
 
 typedef struct _TRowSet__isset {
-  _TRowSet__isset() : columns(false) {}
+  _TRowSet__isset() : columns(false), binaryColumns(false), columnCount(false) {}
   bool columns :1;
+  bool binaryColumns :1;
+  bool columnCount :1;
 } _TRowSet__isset;
 
 class TRowSet {
@@ -1818,13 +1830,15 @@ class TRowSet {
 
   TRowSet(const TRowSet&);
   TRowSet& operator=(const TRowSet&);
-  TRowSet() : startRowOffset(0) {
+  TRowSet() : startRowOffset(0), binaryColumns(), columnCount(0) {
   }
 
   virtual ~TRowSet() throw();
   int64_t startRowOffset;
   std::vector<TRow>  rows;
   std::vector<TColumn>  columns;
+  std::string binaryColumns;
+  int32_t columnCount;
 
   _TRowSet__isset __isset;
 
@@ -1833,6 +1847,10 @@ class TRowSet {
   void __set_rows(const std::vector<TRow> & val);
 
   void __set_columns(const std::vector<TColumn> & val);
+
+  void __set_binaryColumns(const std::string& val);
+
+  void __set_columnCount(const int32_t val);
 
   bool operator == (const TRowSet & rhs) const
   {
@@ -1843,6 +1861,14 @@ class TRowSet {
     if (__isset.columns != rhs.__isset.columns)
       return false;
     else if (__isset.columns && !(columns == rhs.columns))
+      return false;
+    if (__isset.binaryColumns != rhs.__isset.binaryColumns)
+      return false;
+    else if (__isset.binaryColumns && !(binaryColumns == rhs.binaryColumns))
+      return false;
+    if (__isset.columnCount != rhs.__isset.columnCount)
+      return false;
+    else if (__isset.columnCount && !(columnCount == rhs.columnCount))
       return false;
     return true;
   }
@@ -2103,8 +2129,8 @@ class TOpenSessionReq {
 
   TOpenSessionReq(const TOpenSessionReq&);
   TOpenSessionReq& operator=(const TOpenSessionReq&);
-  TOpenSessionReq() : client_protocol((TProtocolVersion::type)7), username(), password() {
-    client_protocol = (TProtocolVersion::type)7;
+  TOpenSessionReq() : client_protocol((TProtocolVersion::type)8), username(), password() {
+    client_protocol = (TProtocolVersion::type)8;
 
   }
 
@@ -2173,8 +2199,8 @@ class TOpenSessionResp {
 
   TOpenSessionResp(const TOpenSessionResp&);
   TOpenSessionResp& operator=(const TOpenSessionResp&);
-  TOpenSessionResp() : serverProtocolVersion((TProtocolVersion::type)7) {
-    serverProtocolVersion = (TProtocolVersion::type)7;
+  TOpenSessionResp() : serverProtocolVersion((TProtocolVersion::type)8) {
+    serverProtocolVersion = (TProtocolVersion::type)8;
 
   }
 
@@ -2477,9 +2503,10 @@ inline std::ostream& operator<<(std::ostream& out, const TGetInfoResp& obj)
 }
 
 typedef struct _TExecuteStatementReq__isset {
-  _TExecuteStatementReq__isset() : confOverlay(false), runAsync(true) {}
+  _TExecuteStatementReq__isset() : confOverlay(false), runAsync(true), queryTimeout(true) {}
   bool confOverlay :1;
   bool runAsync :1;
+  bool queryTimeout :1;
 } _TExecuteStatementReq__isset;
 
 class TExecuteStatementReq {
@@ -2487,7 +2514,7 @@ class TExecuteStatementReq {
 
   TExecuteStatementReq(const TExecuteStatementReq&);
   TExecuteStatementReq& operator=(const TExecuteStatementReq&);
-  TExecuteStatementReq() : statement(), runAsync(false) {
+  TExecuteStatementReq() : statement(), runAsync(false), queryTimeout(0LL) {
   }
 
   virtual ~TExecuteStatementReq() throw();
@@ -2495,6 +2522,7 @@ class TExecuteStatementReq {
   std::string statement;
   std::map<std::string, std::string>  confOverlay;
   bool runAsync;
+  int64_t queryTimeout;
 
   _TExecuteStatementReq__isset __isset;
 
@@ -2505,6 +2533,8 @@ class TExecuteStatementReq {
   void __set_confOverlay(const std::map<std::string, std::string> & val);
 
   void __set_runAsync(const bool val);
+
+  void __set_queryTimeout(const int64_t val);
 
   bool operator == (const TExecuteStatementReq & rhs) const
   {
@@ -2519,6 +2549,10 @@ class TExecuteStatementReq {
     if (__isset.runAsync != rhs.__isset.runAsync)
       return false;
     else if (__isset.runAsync && !(runAsync == rhs.runAsync))
+      return false;
+    if (__isset.queryTimeout != rhs.__isset.queryTimeout)
+      return false;
+    else if (__isset.queryTimeout && !(queryTimeout == rhs.queryTimeout))
       return false;
     return true;
   }
@@ -3367,6 +3401,274 @@ inline std::ostream& operator<<(std::ostream& out, const TGetFunctionsResp& obj)
   return out;
 }
 
+typedef struct _TGetPrimaryKeysReq__isset {
+  _TGetPrimaryKeysReq__isset() : catalogName(false), schemaName(false), tableName(false) {}
+  bool catalogName :1;
+  bool schemaName :1;
+  bool tableName :1;
+} _TGetPrimaryKeysReq__isset;
+
+class TGetPrimaryKeysReq {
+ public:
+
+  TGetPrimaryKeysReq(const TGetPrimaryKeysReq&);
+  TGetPrimaryKeysReq& operator=(const TGetPrimaryKeysReq&);
+  TGetPrimaryKeysReq() : catalogName(), schemaName(), tableName() {
+  }
+
+  virtual ~TGetPrimaryKeysReq() throw();
+  TSessionHandle sessionHandle;
+  TIdentifier catalogName;
+  TIdentifier schemaName;
+  TIdentifier tableName;
+
+  _TGetPrimaryKeysReq__isset __isset;
+
+  void __set_sessionHandle(const TSessionHandle& val);
+
+  void __set_catalogName(const TIdentifier& val);
+
+  void __set_schemaName(const TIdentifier& val);
+
+  void __set_tableName(const TIdentifier& val);
+
+  bool operator == (const TGetPrimaryKeysReq & rhs) const
+  {
+    if (!(sessionHandle == rhs.sessionHandle))
+      return false;
+    if (__isset.catalogName != rhs.__isset.catalogName)
+      return false;
+    else if (__isset.catalogName && !(catalogName == rhs.catalogName))
+      return false;
+    if (__isset.schemaName != rhs.__isset.schemaName)
+      return false;
+    else if (__isset.schemaName && !(schemaName == rhs.schemaName))
+      return false;
+    if (__isset.tableName != rhs.__isset.tableName)
+      return false;
+    else if (__isset.tableName && !(tableName == rhs.tableName))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetPrimaryKeysReq &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetPrimaryKeysReq & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+  virtual void printTo(std::ostream& out) const;
+};
+
+void swap(TGetPrimaryKeysReq &a, TGetPrimaryKeysReq &b);
+
+inline std::ostream& operator<<(std::ostream& out, const TGetPrimaryKeysReq& obj)
+{
+  obj.printTo(out);
+  return out;
+}
+
+typedef struct _TGetPrimaryKeysResp__isset {
+  _TGetPrimaryKeysResp__isset() : operationHandle(false) {}
+  bool operationHandle :1;
+} _TGetPrimaryKeysResp__isset;
+
+class TGetPrimaryKeysResp {
+ public:
+
+  TGetPrimaryKeysResp(const TGetPrimaryKeysResp&);
+  TGetPrimaryKeysResp& operator=(const TGetPrimaryKeysResp&);
+  TGetPrimaryKeysResp() {
+  }
+
+  virtual ~TGetPrimaryKeysResp() throw();
+  TStatus status;
+  TOperationHandle operationHandle;
+
+  _TGetPrimaryKeysResp__isset __isset;
+
+  void __set_status(const TStatus& val);
+
+  void __set_operationHandle(const TOperationHandle& val);
+
+  bool operator == (const TGetPrimaryKeysResp & rhs) const
+  {
+    if (!(status == rhs.status))
+      return false;
+    if (__isset.operationHandle != rhs.__isset.operationHandle)
+      return false;
+    else if (__isset.operationHandle && !(operationHandle == rhs.operationHandle))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetPrimaryKeysResp &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetPrimaryKeysResp & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+  virtual void printTo(std::ostream& out) const;
+};
+
+void swap(TGetPrimaryKeysResp &a, TGetPrimaryKeysResp &b);
+
+inline std::ostream& operator<<(std::ostream& out, const TGetPrimaryKeysResp& obj)
+{
+  obj.printTo(out);
+  return out;
+}
+
+typedef struct _TGetCrossReferenceReq__isset {
+  _TGetCrossReferenceReq__isset() : parentCatalogName(false), parentSchemaName(false), parentTableName(false), foreignCatalogName(false), foreignSchemaName(false), foreignTableName(false) {}
+  bool parentCatalogName :1;
+  bool parentSchemaName :1;
+  bool parentTableName :1;
+  bool foreignCatalogName :1;
+  bool foreignSchemaName :1;
+  bool foreignTableName :1;
+} _TGetCrossReferenceReq__isset;
+
+class TGetCrossReferenceReq {
+ public:
+
+  TGetCrossReferenceReq(const TGetCrossReferenceReq&);
+  TGetCrossReferenceReq& operator=(const TGetCrossReferenceReq&);
+  TGetCrossReferenceReq() : parentCatalogName(), parentSchemaName(), parentTableName(), foreignCatalogName(), foreignSchemaName(), foreignTableName() {
+  }
+
+  virtual ~TGetCrossReferenceReq() throw();
+  TSessionHandle sessionHandle;
+  TIdentifier parentCatalogName;
+  TIdentifier parentSchemaName;
+  TIdentifier parentTableName;
+  TIdentifier foreignCatalogName;
+  TIdentifier foreignSchemaName;
+  TIdentifier foreignTableName;
+
+  _TGetCrossReferenceReq__isset __isset;
+
+  void __set_sessionHandle(const TSessionHandle& val);
+
+  void __set_parentCatalogName(const TIdentifier& val);
+
+  void __set_parentSchemaName(const TIdentifier& val);
+
+  void __set_parentTableName(const TIdentifier& val);
+
+  void __set_foreignCatalogName(const TIdentifier& val);
+
+  void __set_foreignSchemaName(const TIdentifier& val);
+
+  void __set_foreignTableName(const TIdentifier& val);
+
+  bool operator == (const TGetCrossReferenceReq & rhs) const
+  {
+    if (!(sessionHandle == rhs.sessionHandle))
+      return false;
+    if (__isset.parentCatalogName != rhs.__isset.parentCatalogName)
+      return false;
+    else if (__isset.parentCatalogName && !(parentCatalogName == rhs.parentCatalogName))
+      return false;
+    if (__isset.parentSchemaName != rhs.__isset.parentSchemaName)
+      return false;
+    else if (__isset.parentSchemaName && !(parentSchemaName == rhs.parentSchemaName))
+      return false;
+    if (__isset.parentTableName != rhs.__isset.parentTableName)
+      return false;
+    else if (__isset.parentTableName && !(parentTableName == rhs.parentTableName))
+      return false;
+    if (__isset.foreignCatalogName != rhs.__isset.foreignCatalogName)
+      return false;
+    else if (__isset.foreignCatalogName && !(foreignCatalogName == rhs.foreignCatalogName))
+      return false;
+    if (__isset.foreignSchemaName != rhs.__isset.foreignSchemaName)
+      return false;
+    else if (__isset.foreignSchemaName && !(foreignSchemaName == rhs.foreignSchemaName))
+      return false;
+    if (__isset.foreignTableName != rhs.__isset.foreignTableName)
+      return false;
+    else if (__isset.foreignTableName && !(foreignTableName == rhs.foreignTableName))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetCrossReferenceReq &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetCrossReferenceReq & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+  virtual void printTo(std::ostream& out) const;
+};
+
+void swap(TGetCrossReferenceReq &a, TGetCrossReferenceReq &b);
+
+inline std::ostream& operator<<(std::ostream& out, const TGetCrossReferenceReq& obj)
+{
+  obj.printTo(out);
+  return out;
+}
+
+typedef struct _TGetCrossReferenceResp__isset {
+  _TGetCrossReferenceResp__isset() : operationHandle(false) {}
+  bool operationHandle :1;
+} _TGetCrossReferenceResp__isset;
+
+class TGetCrossReferenceResp {
+ public:
+
+  TGetCrossReferenceResp(const TGetCrossReferenceResp&);
+  TGetCrossReferenceResp& operator=(const TGetCrossReferenceResp&);
+  TGetCrossReferenceResp() {
+  }
+
+  virtual ~TGetCrossReferenceResp() throw();
+  TStatus status;
+  TOperationHandle operationHandle;
+
+  _TGetCrossReferenceResp__isset __isset;
+
+  void __set_status(const TStatus& val);
+
+  void __set_operationHandle(const TOperationHandle& val);
+
+  bool operator == (const TGetCrossReferenceResp & rhs) const
+  {
+    if (!(status == rhs.status))
+      return false;
+    if (__isset.operationHandle != rhs.__isset.operationHandle)
+      return false;
+    else if (__isset.operationHandle && !(operationHandle == rhs.operationHandle))
+      return false;
+    return true;
+  }
+  bool operator != (const TGetCrossReferenceResp &rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool operator < (const TGetCrossReferenceResp & ) const;
+
+  uint32_t read(::apache::thrift::protocol::TProtocol* iprot);
+  uint32_t write(::apache::thrift::protocol::TProtocol* oprot) const;
+
+  virtual void printTo(std::ostream& out) const;
+};
+
+void swap(TGetCrossReferenceResp &a, TGetCrossReferenceResp &b);
+
+inline std::ostream& operator<<(std::ostream& out, const TGetCrossReferenceResp& obj)
+{
+  obj.printTo(out);
+  return out;
+}
+
 
 class TGetOperationStatusReq {
  public:
@@ -3408,7 +3710,7 @@ inline std::ostream& operator<<(std::ostream& out, const TGetOperationStatusReq&
 }
 
 typedef struct _TGetOperationStatusResp__isset {
-  _TGetOperationStatusResp__isset() : operationState(false), sqlState(false), errorCode(false), errorMessage(false), taskStatus(false), operationStarted(false), operationCompleted(false) {}
+  _TGetOperationStatusResp__isset() : operationState(false), sqlState(false), errorCode(false), errorMessage(false), taskStatus(false), operationStarted(false), operationCompleted(false), hasResultSet(false) {}
   bool operationState :1;
   bool sqlState :1;
   bool errorCode :1;
@@ -3416,6 +3718,7 @@ typedef struct _TGetOperationStatusResp__isset {
   bool taskStatus :1;
   bool operationStarted :1;
   bool operationCompleted :1;
+  bool hasResultSet :1;
 } _TGetOperationStatusResp__isset;
 
 class TGetOperationStatusResp {
@@ -3423,7 +3726,7 @@ class TGetOperationStatusResp {
 
   TGetOperationStatusResp(const TGetOperationStatusResp&);
   TGetOperationStatusResp& operator=(const TGetOperationStatusResp&);
-  TGetOperationStatusResp() : operationState((TOperationState::type)0), sqlState(), errorCode(0), errorMessage(), taskStatus(), operationStarted(0), operationCompleted(0) {
+  TGetOperationStatusResp() : operationState((TOperationState::type)0), sqlState(), errorCode(0), errorMessage(), taskStatus(), operationStarted(0), operationCompleted(0), hasResultSet(0) {
   }
 
   virtual ~TGetOperationStatusResp() throw();
@@ -3435,6 +3738,7 @@ class TGetOperationStatusResp {
   std::string taskStatus;
   int64_t operationStarted;
   int64_t operationCompleted;
+  bool hasResultSet;
 
   _TGetOperationStatusResp__isset __isset;
 
@@ -3453,6 +3757,8 @@ class TGetOperationStatusResp {
   void __set_operationStarted(const int64_t val);
 
   void __set_operationCompleted(const int64_t val);
+
+  void __set_hasResultSet(const bool val);
 
   bool operator == (const TGetOperationStatusResp & rhs) const
   {
@@ -3485,6 +3791,10 @@ class TGetOperationStatusResp {
     if (__isset.operationCompleted != rhs.__isset.operationCompleted)
       return false;
     else if (__isset.operationCompleted && !(operationCompleted == rhs.operationCompleted))
+      return false;
+    if (__isset.hasResultSet != rhs.__isset.hasResultSet)
+      return false;
+    else if (__isset.hasResultSet && !(hasResultSet == rhs.hasResultSet))
       return false;
     return true;
   }

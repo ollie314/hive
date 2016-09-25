@@ -76,7 +76,7 @@ public class VectorSMBMapJoinOperator extends SMBMapJoinOperator implements Vect
 
   private transient VectorHashKeyWrapperBatch keyWrapperBatch;
 
-  private transient Map<ObjectInspector, VectorAssignRowSameBatch> outputVectorAssignRowMap;
+  private transient Map<ObjectInspector, VectorAssignRow> outputVectorAssignRowMap;
 
   private transient int batchIndex = -1;
 
@@ -126,7 +126,8 @@ public class VectorSMBMapJoinOperator extends SMBMapJoinOperator implements Vect
     bigTableValueExpressions = vContext.getVectorExpressions(exprs.get(posBigTable));
 
     // We are making a new output vectorized row batch.
-    vOutContext = new VectorizationContext(getName(), desc.getOutputColumnNames());
+    vOutContext = new VectorizationContext(getName(), desc.getOutputColumnNames(),
+        /* vContextEnvironment */ vContext);
   }
 
   @Override
@@ -159,7 +160,7 @@ public class VectorSMBMapJoinOperator extends SMBMapJoinOperator implements Vect
 
     keyWrapperBatch = VectorHashKeyWrapperBatch.compileKeyWrapperBatch(keyExpressions);
 
-    outputVectorAssignRowMap = new HashMap<ObjectInspector, VectorAssignRowSameBatch>();
+    outputVectorAssignRowMap = new HashMap<ObjectInspector, VectorAssignRow>();
 
     // This key evaluator translates from the vectorized VectorHashKeyWrapper format
     // into the row-mode MapJoinKey
@@ -287,15 +288,14 @@ public class VectorSMBMapJoinOperator extends SMBMapJoinOperator implements Vect
   @Override
   protected void internalForward(Object row, ObjectInspector outputOI) throws HiveException {
     Object[] values = (Object[]) row;
-    VectorAssignRowSameBatch va = outputVectorAssignRowMap.get(outputOI);
+    VectorAssignRow va = outputVectorAssignRowMap.get(outputOI);
     if (va == null) {
-      va = new VectorAssignRowSameBatch();
+      va = new VectorAssignRow();
       va.init((StructObjectInspector) outputOI, vOutContext.getProjectedColumns());
-      va.setOneBatch(outputBatch);
       outputVectorAssignRowMap.put(outputOI, va);
     }
 
-    va.assignRow(outputBatch.size, values);
+    va.assignRow(outputBatch, outputBatch.size, values);
 
     ++outputBatch.size;
     if (outputBatch.size == VectorizedRowBatch.DEFAULT_SIZE) {

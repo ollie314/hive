@@ -50,6 +50,8 @@ import org.apache.hadoop.hive.common.cli.CommonCliOptions;
 import org.apache.hadoop.hive.common.metrics.common.MetricsFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.llap.coordinator.LlapCoordinator;
+import org.apache.hadoop.hive.llap.io.api.LlapProxy;
 import org.apache.hadoop.hive.ql.exec.spark.session.SparkSessionManagerImpl;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionPoolManager;
 import org.apache.hadoop.hive.ql.util.ZooKeeperHiveHelper;
@@ -58,7 +60,9 @@ import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hive.common.util.HiveStringUtils;
 import org.apache.hive.common.util.HiveVersionInfo;
+import org.apache.hive.common.util.ShutdownHookManager;
 import org.apache.hive.http.HttpServer;
+import org.apache.hive.http.LlapServlet;
 import org.apache.hive.service.CompositeService;
 import org.apache.hive.service.ServiceException;
 import org.apache.hive.service.cli.CLIService;
@@ -91,7 +95,7 @@ public class HiveServer2 extends CompositeService {
   private PersistentEphemeralNode znode;
   private String znodePath;
   private CuratorFramework zooKeeperClient;
-  private boolean registeredWithZooKeeper = false;
+  private boolean deregisteredWithZooKeeper = false; // Set to true only when deregistration happens
   private HttpServer webServer; // Web UI
 
   public HiveServer2() {
@@ -132,16 +136,29 @@ public class HiveServer2 extends CompositeService {
     } catch (Throwable t) {
       throw new Error("Unable to intitialize HiveServer2", t);
     }
+    if (HiveConf.getBoolVar(hiveConf, ConfVars.LLAP_HS2_ENABLE_COORDINATOR)) {
+      // See method comment.
+      try {
+        LlapCoordinator.initializeInstance(hiveConf);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
     // Setup web UI
     try {
-      if (hiveConf.getBoolVar(ConfVars.HIVE_IN_TEST)) {
-        LOG.info("Web UI is disabled since in test mode");
-      } else {
-        int webUIPort =
+      int webUIPort =
           hiveConf.getIntVar(ConfVars.HIVE_SERVER2_WEBUI_PORT);
+      // We disable web UI in tests unless the test is explicitly setting a
+      // unique web ui port so that we don't mess up ptests.
+      boolean uiDisabledInTest = hiveConf.getBoolVar(ConfVars.HIVE_IN_TEST) &&
+          (webUIPort == Integer.valueOf(ConfVars.HIVE_SERVER2_WEBUI_PORT.getDefaultValue()));
+      if (uiDisabledInTest) {
+        LOG.info("Web UI is disabled in test mode since webui port was not specified");
+      } else {
         if (webUIPort <= 0) {
           LOG.info("Web UI is disabled since port is set to " + webUIPort);
         } else {
+          LOG.info("Starting Web UI on port "+ webUIPort);
           HttpServer.Builder builder = new HttpServer.Builder("hiveserver2");
           builder.setPort(webUIPort).setConf(hiveConf);
           builder.setHost(hiveConf.getVar(ConfVars.HIVE_SERVER2_WEBUI_BIND_HOST));
@@ -181,6 +198,7 @@ public class HiveServer2 extends CompositeService {
             builder.setSPNEGOKeytab(spnegoKeytab);
             builder.setUseSPNEGO(true);
           }
+          builder.addServlet("llap", LlapServlet.class);
           webServer = builder.build();
           webServer.addServlet("query_page", "/query_page", QueryProfileServlet.class);
         }
@@ -189,7 +207,7 @@ public class HiveServer2 extends CompositeService {
       throw new ServiceException(ie);
     }
     // Add a shutdown hook for catching SIGTERM & SIGINT
-    Runtime.getRuntime().addShutdownHook(new Thread() {
+    ShutdownHookManager.addShutdownHook(new Runnable() {
       @Override
       public void run() {
         hiveServer2.stop();
@@ -307,7 +325,7 @@ public class HiveServer2 extends CompositeService {
       if (!znode.waitForInitialCreate(znodeCreationTimeout, TimeUnit.SECONDS)) {
         throw new Exception("Max znode creation wait time: " + znodeCreationTimeout + "s exhausted");
       }
-      setRegisteredWithZooKeeper(true);
+      setDeregisteredWithZooKeeper(false);
       znodePath = znode.getActualPath();
       // Set a watch on the znode
       if (zooKeeperClient.checkExists().usingWatcher(new DeRegisterWatcher()).forPath(znodePath) == null) {
@@ -398,7 +416,7 @@ public class HiveServer2 extends CompositeService {
           } catch (IOException e) {
             LOG.error("Failed to close the persistent ephemeral znode", e);
           } finally {
-            HiveServer2.this.setRegisteredWithZooKeeper(false);
+            HiveServer2.this.setDeregisteredWithZooKeeper(true);
             // If there are no more active client sessions, stop the server
             if (cliService.getSessionManager().getOpenSessionCount() == 0) {
               LOG.warn("This instance of HiveServer2 has been removed from the list of server "
@@ -413,7 +431,8 @@ public class HiveServer2 extends CompositeService {
   }
 
   private void removeServerInstanceFromZooKeeper() throws Exception {
-    setRegisteredWithZooKeeper(false);
+    setDeregisteredWithZooKeeper(true);
+    
     if (znode != null) {
       znode.close();
     }
@@ -421,12 +440,12 @@ public class HiveServer2 extends CompositeService {
     LOG.info("Server instance removed from ZooKeeper.");
   }
 
-  public boolean isRegisteredWithZooKeeper() {
-    return registeredWithZooKeeper;
+  public boolean isDeregisteredWithZooKeeper() {
+    return deregisteredWithZooKeeper;
   }
 
-  private void setRegisteredWithZooKeeper(boolean registeredWithZooKeeper) {
-    this.registeredWithZooKeeper = registeredWithZooKeeper;
+  private void setDeregisteredWithZooKeeper(boolean deregisteredWithZooKeeper) {
+    this.deregisteredWithZooKeeper = deregisteredWithZooKeeper;
   }
 
   private String getServerInstanceURI() throws Exception {
@@ -525,6 +544,9 @@ public class HiveServer2 extends CompositeService {
       LOG.info("Starting HiveServer2");
       HiveConf hiveConf = new HiveConf();
       maxAttempts = hiveConf.getLongVar(HiveConf.ConfVars.HIVE_SERVER2_MAX_START_ATTEMPTS);
+      long retrySleepIntervalMs = hiveConf
+          .getTimeVar(ConfVars.HIVE_SERVER2_SLEEP_INTERVAL_BETWEEN_START_ATTEMPTS,
+              TimeUnit.MILLISECONDS);
       HiveServer2 server = null;
       try {
         // Initialize the pool before we start the server; don't start yet.
@@ -570,9 +592,9 @@ public class HiveServer2 extends CompositeService {
           throw new Error("Max start attempts " + maxAttempts + " exhausted", throwable);
         } else {
           LOG.warn("Error starting HiveServer2 on attempt " + attempts
-              + ", will retry in 60 seconds", throwable);
+              + ", will retry in " + retrySleepIntervalMs + "ms", throwable);
           try {
-            Thread.sleep(60L * 1000L);
+            Thread.sleep(retrySleepIntervalMs);
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
           }

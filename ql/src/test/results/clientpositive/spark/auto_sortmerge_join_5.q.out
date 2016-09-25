@@ -76,38 +76,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- Since size is being used to find the big table, the order of the tables in the join does not matter
 explain extended select count(*) FROM bucket_small a JOIN bucket_big b ON a.key = b.key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_small
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_big
-            b
-         =
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_FUNCTIONSTAR
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -172,6 +140,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.bucket_big
                     numFiles 2
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct bucket_big { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -191,6 +161,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.bucket_big
                       numFiles 2
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct bucket_big { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -253,38 +225,6 @@ PREHOOK: query: explain extended select count(*) FROM bucket_big a JOIN bucket_s
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select count(*) FROM bucket_big a JOIN bucket_small b ON a.key = b.key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_big
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_small
-            b
-         =
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_FUNCTIONSTAR
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -349,6 +289,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.bucket_big
                     numFiles 2
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct bucket_big { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -368,6 +310,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.bucket_big
                       numFiles 2
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct bucket_big { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -430,38 +374,6 @@ PREHOOK: query: explain extended select count(*) FROM bucket_big a JOIN bucket_s
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended select count(*) FROM bucket_big a JOIN bucket_small b ON a.key = b.key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_big
-            a
-         TOK_TABREF
-            TOK_TABNAME
-               bucket_small
-            b
-         =
-            .
-               TOK_TABLE_OR_COL
-                  a
-               key
-            .
-               TOK_TABLE_OR_COL
-                  b
-               key
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_FUNCTIONSTAR
-               count
-
-
 STAGE DEPENDENCIES:
   Stage-2 is a root stage
   Stage-1 depends on stages: Stage-2
@@ -516,6 +428,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.bucket_small
                     numFiles 4
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct bucket_small { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -535,6 +449,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.bucket_small
                       numFiles 4
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct bucket_small { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -614,6 +530,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                     name default.bucket_big
                     numFiles 2
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct bucket_big { string key, string value}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
@@ -633,6 +551,8 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.bucket_big
                       numFiles 2
+                      numRows 0
+                      rawDataSize 0
                       serialization.ddl struct bucket_big { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe

@@ -15,8 +15,9 @@ module TProtocolVersion
   HIVE_CLI_SERVICE_PROTOCOL_V6 = 5
   HIVE_CLI_SERVICE_PROTOCOL_V7 = 6
   HIVE_CLI_SERVICE_PROTOCOL_V8 = 7
-  VALUE_MAP = {0 => "HIVE_CLI_SERVICE_PROTOCOL_V1", 1 => "HIVE_CLI_SERVICE_PROTOCOL_V2", 2 => "HIVE_CLI_SERVICE_PROTOCOL_V3", 3 => "HIVE_CLI_SERVICE_PROTOCOL_V4", 4 => "HIVE_CLI_SERVICE_PROTOCOL_V5", 5 => "HIVE_CLI_SERVICE_PROTOCOL_V6", 6 => "HIVE_CLI_SERVICE_PROTOCOL_V7", 7 => "HIVE_CLI_SERVICE_PROTOCOL_V8"}
-  VALID_VALUES = Set.new([HIVE_CLI_SERVICE_PROTOCOL_V1, HIVE_CLI_SERVICE_PROTOCOL_V2, HIVE_CLI_SERVICE_PROTOCOL_V3, HIVE_CLI_SERVICE_PROTOCOL_V4, HIVE_CLI_SERVICE_PROTOCOL_V5, HIVE_CLI_SERVICE_PROTOCOL_V6, HIVE_CLI_SERVICE_PROTOCOL_V7, HIVE_CLI_SERVICE_PROTOCOL_V8]).freeze
+  HIVE_CLI_SERVICE_PROTOCOL_V9 = 8
+  VALUE_MAP = {0 => "HIVE_CLI_SERVICE_PROTOCOL_V1", 1 => "HIVE_CLI_SERVICE_PROTOCOL_V2", 2 => "HIVE_CLI_SERVICE_PROTOCOL_V3", 3 => "HIVE_CLI_SERVICE_PROTOCOL_V4", 4 => "HIVE_CLI_SERVICE_PROTOCOL_V5", 5 => "HIVE_CLI_SERVICE_PROTOCOL_V6", 6 => "HIVE_CLI_SERVICE_PROTOCOL_V7", 7 => "HIVE_CLI_SERVICE_PROTOCOL_V8", 8 => "HIVE_CLI_SERVICE_PROTOCOL_V9"}
+  VALID_VALUES = Set.new([HIVE_CLI_SERVICE_PROTOCOL_V1, HIVE_CLI_SERVICE_PROTOCOL_V2, HIVE_CLI_SERVICE_PROTOCOL_V3, HIVE_CLI_SERVICE_PROTOCOL_V4, HIVE_CLI_SERVICE_PROTOCOL_V5, HIVE_CLI_SERVICE_PROTOCOL_V6, HIVE_CLI_SERVICE_PROTOCOL_V7, HIVE_CLI_SERVICE_PROTOCOL_V8, HIVE_CLI_SERVICE_PROTOCOL_V9]).freeze
 end
 
 module TTypeId
@@ -65,8 +66,9 @@ module TOperationState
   ERROR_STATE = 5
   UKNOWN_STATE = 6
   PENDING_STATE = 7
-  VALUE_MAP = {0 => "INITIALIZED_STATE", 1 => "RUNNING_STATE", 2 => "FINISHED_STATE", 3 => "CANCELED_STATE", 4 => "CLOSED_STATE", 5 => "ERROR_STATE", 6 => "UKNOWN_STATE", 7 => "PENDING_STATE"}
-  VALID_VALUES = Set.new([INITIALIZED_STATE, RUNNING_STATE, FINISHED_STATE, CANCELED_STATE, CLOSED_STATE, ERROR_STATE, UKNOWN_STATE, PENDING_STATE]).freeze
+  TIMEDOUT_STATE = 8
+  VALUE_MAP = {0 => "INITIALIZED_STATE", 1 => "RUNNING_STATE", 2 => "FINISHED_STATE", 3 => "CANCELED_STATE", 4 => "CLOSED_STATE", 5 => "ERROR_STATE", 6 => "UKNOWN_STATE", 7 => "PENDING_STATE", 8 => "TIMEDOUT_STATE"}
+  VALID_VALUES = Set.new([INITIALIZED_STATE, RUNNING_STATE, FINISHED_STATE, CANCELED_STATE, CLOSED_STATE, ERROR_STATE, UKNOWN_STATE, PENDING_STATE, TIMEDOUT_STATE]).freeze
 end
 
 module TOperationType
@@ -832,11 +834,15 @@ class TRowSet
   STARTROWOFFSET = 1
   ROWS = 2
   COLUMNS = 3
+  BINARYCOLUMNS = 4
+  COLUMNCOUNT = 5
 
   FIELDS = {
     STARTROWOFFSET => {:type => ::Thrift::Types::I64, :name => 'startRowOffset'},
     ROWS => {:type => ::Thrift::Types::LIST, :name => 'rows', :element => {:type => ::Thrift::Types::STRUCT, :class => ::TRow}},
-    COLUMNS => {:type => ::Thrift::Types::LIST, :name => 'columns', :element => {:type => ::Thrift::Types::STRUCT, :class => ::TColumn}, :optional => true}
+    COLUMNS => {:type => ::Thrift::Types::LIST, :name => 'columns', :element => {:type => ::Thrift::Types::STRUCT, :class => ::TColumn}, :optional => true},
+    BINARYCOLUMNS => {:type => ::Thrift::Types::STRING, :name => 'binaryColumns', :binary => true, :optional => true},
+    COLUMNCOUNT => {:type => ::Thrift::Types::I32, :name => 'columnCount', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -950,7 +956,7 @@ class TOpenSessionReq
   CONFIGURATION = 4
 
   FIELDS = {
-    CLIENT_PROTOCOL => {:type => ::Thrift::Types::I32, :name => 'client_protocol', :default =>     7, :enum_class => ::TProtocolVersion},
+    CLIENT_PROTOCOL => {:type => ::Thrift::Types::I32, :name => 'client_protocol', :default =>     8, :enum_class => ::TProtocolVersion},
     USERNAME => {:type => ::Thrift::Types::STRING, :name => 'username', :optional => true},
     PASSWORD => {:type => ::Thrift::Types::STRING, :name => 'password', :optional => true},
     CONFIGURATION => {:type => ::Thrift::Types::MAP, :name => 'configuration', :key => {:type => ::Thrift::Types::STRING}, :value => {:type => ::Thrift::Types::STRING}, :optional => true}
@@ -977,7 +983,7 @@ class TOpenSessionResp
 
   FIELDS = {
     STATUS => {:type => ::Thrift::Types::STRUCT, :name => 'status', :class => ::TStatus},
-    SERVERPROTOCOLVERSION => {:type => ::Thrift::Types::I32, :name => 'serverProtocolVersion', :default =>     7, :enum_class => ::TProtocolVersion},
+    SERVERPROTOCOLVERSION => {:type => ::Thrift::Types::I32, :name => 'serverProtocolVersion', :default =>     8, :enum_class => ::TProtocolVersion},
     SESSIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'sessionHandle', :class => ::TSessionHandle, :optional => true},
     CONFIGURATION => {:type => ::Thrift::Types::MAP, :name => 'configuration', :key => {:type => ::Thrift::Types::STRING}, :value => {:type => ::Thrift::Types::STRING}, :optional => true}
   }
@@ -1131,12 +1137,14 @@ class TExecuteStatementReq
   STATEMENT = 2
   CONFOVERLAY = 3
   RUNASYNC = 4
+  QUERYTIMEOUT = 5
 
   FIELDS = {
     SESSIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'sessionHandle', :class => ::TSessionHandle},
     STATEMENT => {:type => ::Thrift::Types::STRING, :name => 'statement'},
     CONFOVERLAY => {:type => ::Thrift::Types::MAP, :name => 'confOverlay', :key => {:type => ::Thrift::Types::STRING}, :value => {:type => ::Thrift::Types::STRING}, :optional => true},
-    RUNASYNC => {:type => ::Thrift::Types::BOOL, :name => 'runAsync', :default => false, :optional => true}
+    RUNASYNC => {:type => ::Thrift::Types::BOOL, :name => 'runAsync', :default => false, :optional => true},
+    QUERYTIMEOUT => {:type => ::Thrift::Types::I64, :name => 'queryTimeout', :default => 0, :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1447,6 +1455,96 @@ class TGetFunctionsResp
   ::Thrift::Struct.generate_accessors self
 end
 
+class TGetPrimaryKeysReq
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SESSIONHANDLE = 1
+  CATALOGNAME = 2
+  SCHEMANAME = 3
+  TABLENAME = 4
+
+  FIELDS = {
+    SESSIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'sessionHandle', :class => ::TSessionHandle},
+    CATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'catalogName', :optional => true},
+    SCHEMANAME => {:type => ::Thrift::Types::STRING, :name => 'schemaName', :optional => true},
+    TABLENAME => {:type => ::Thrift::Types::STRING, :name => 'tableName', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field sessionHandle is unset!') unless @sessionHandle
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class TGetPrimaryKeysResp
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  STATUS = 1
+  OPERATIONHANDLE = 2
+
+  FIELDS = {
+    STATUS => {:type => ::Thrift::Types::STRUCT, :name => 'status', :class => ::TStatus},
+    OPERATIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'operationHandle', :class => ::TOperationHandle, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field status is unset!') unless @status
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class TGetCrossReferenceReq
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SESSIONHANDLE = 1
+  PARENTCATALOGNAME = 2
+  PARENTSCHEMANAME = 3
+  PARENTTABLENAME = 4
+  FOREIGNCATALOGNAME = 5
+  FOREIGNSCHEMANAME = 6
+  FOREIGNTABLENAME = 7
+
+  FIELDS = {
+    SESSIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'sessionHandle', :class => ::TSessionHandle},
+    PARENTCATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'parentCatalogName', :optional => true},
+    PARENTSCHEMANAME => {:type => ::Thrift::Types::STRING, :name => 'parentSchemaName', :optional => true},
+    PARENTTABLENAME => {:type => ::Thrift::Types::STRING, :name => 'parentTableName', :optional => true},
+    FOREIGNCATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'foreignCatalogName', :optional => true},
+    FOREIGNSCHEMANAME => {:type => ::Thrift::Types::STRING, :name => 'foreignSchemaName', :optional => true},
+    FOREIGNTABLENAME => {:type => ::Thrift::Types::STRING, :name => 'foreignTableName', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field sessionHandle is unset!') unless @sessionHandle
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class TGetCrossReferenceResp
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  STATUS = 1
+  OPERATIONHANDLE = 2
+
+  FIELDS = {
+    STATUS => {:type => ::Thrift::Types::STRUCT, :name => 'status', :class => ::TStatus},
+    OPERATIONHANDLE => {:type => ::Thrift::Types::STRUCT, :name => 'operationHandle', :class => ::TOperationHandle, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field status is unset!') unless @status
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class TGetOperationStatusReq
   include ::Thrift::Struct, ::Thrift::Struct_Union
   OPERATIONHANDLE = 1
@@ -1474,6 +1572,7 @@ class TGetOperationStatusResp
   TASKSTATUS = 6
   OPERATIONSTARTED = 7
   OPERATIONCOMPLETED = 8
+  HASRESULTSET = 9
 
   FIELDS = {
     STATUS => {:type => ::Thrift::Types::STRUCT, :name => 'status', :class => ::TStatus},
@@ -1483,7 +1582,8 @@ class TGetOperationStatusResp
     ERRORMESSAGE => {:type => ::Thrift::Types::STRING, :name => 'errorMessage', :optional => true},
     TASKSTATUS => {:type => ::Thrift::Types::STRING, :name => 'taskStatus', :optional => true},
     OPERATIONSTARTED => {:type => ::Thrift::Types::I64, :name => 'operationStarted', :optional => true},
-    OPERATIONCOMPLETED => {:type => ::Thrift::Types::I64, :name => 'operationCompleted', :optional => true}
+    OPERATIONCOMPLETED => {:type => ::Thrift::Types::I64, :name => 'operationCompleted', :optional => true},
+    HASRESULTSET => {:type => ::Thrift::Types::BOOL, :name => 'hasResultSet', :optional => true}
   }
 
   def struct_fields; FIELDS; end

@@ -73,7 +73,7 @@ SELECT key+11 FROM src WHERE key=484
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src
 POSTHOOK: Output: default@fact_tz@ds=1/hr=2
-POSTHOOK: Lineage: fact_tz PARTITION(ds=1,hr=2).x EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
+POSTHOOK: Lineage: fact_tz PARTITION(ds=1,hr=2).x EXPRESSION []
 #### A masked pattern was here ####
 PREHOOK: query: -- switch fact_daily to skewed table and point its location to /fact_tz/ds=1
 alter table fact_daily skewed by (x) on (484)
@@ -176,33 +176,6 @@ POSTHOOK: query: -- pruner only pick up skewed-value directory
 -- explain plan shows which directory selected: Truncated Path -> Alias
 explain extended SELECT x FROM fact_daily WHERE ds='1' and x=484
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            fact_daily
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               x
-      TOK_WHERE
-         and
-            =
-               TOK_TABLE_OR_COL
-                  ds
-               '1'
-            =
-               TOK_TABLE_OR_COL
-                  x
-               484
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -288,33 +261,6 @@ POSTHOOK: query: -- pruner only pick up default directory since x equal to non-s
 -- explain plan shows which directory selected: Truncated Path -> Alias
 explain extended SELECT x FROM fact_daily WHERE ds='1' and x=495
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            fact_daily
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               x
-      TOK_WHERE
-         and
-            =
-               TOK_TABLE_OR_COL
-                  ds
-               '1'
-            =
-               TOK_TABLE_OR_COL
-                  x
-               495
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -396,33 +342,6 @@ PREHOOK: query: explain extended SELECT x FROM fact_daily WHERE ds='1' and x=1
 PREHOOK: type: QUERY
 POSTHOOK: query: explain extended SELECT x FROM fact_daily WHERE ds='1' and x=1
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            fact_daily
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               x
-      TOK_WHERE
-         and
-            =
-               TOK_TABLE_OR_COL
-                  ds
-               '1'
-            =
-               TOK_TABLE_OR_COL
-                  x
-               1
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 

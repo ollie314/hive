@@ -28,36 +28,6 @@ EXPLAIN EXTENDED
 INSERT OVERWRITE TABLE outputTbl1
 SELECT key, count(1) FROM T1 where ds = '1' GROUP BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            T1
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               outputTbl1
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_FUNCTION
-               count
-               1
-      TOK_WHERE
-         =
-            TOK_TABLE_OR_COL
-               ds
-            '1'
-      TOK_GROUPBY
-         TOK_TABLE_OR_COL
-            key
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -117,15 +87,20 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                     bucket_count -1
                     columns key,cnt
                     columns.comments 
                     columns.types int:int
 #### A masked pattern was here ####
                     name default.outputtbl1
+                    numFiles 0
+                    numRows 0
+                    rawDataSize 0
                     serialization.ddl struct outputtbl1 { i32 key, i32 cnt}
                     serialization.format 1
                     serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    totalSize 0
 #### A masked pattern was here ####
                   serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
                   name: default.outputtbl1
@@ -142,15 +117,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns key,cnt
                 columns.comments 
                 columns.types int:int
 #### A masked pattern was here ####
                 name default.outputtbl1
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct outputtbl1 { i32 key, i32 cnt}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.outputtbl1
@@ -198,36 +178,6 @@ EXPLAIN EXTENDED
 INSERT OVERWRITE TABLE outputTbl1
 SELECT key, count(1) FROM T1 where ds = '1' GROUP BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            T1
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               outputTbl1
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_FUNCTION
-               count
-               1
-      TOK_WHERE
-         =
-            TOK_TABLE_OR_COL
-               ds
-            '1'
-      TOK_GROUPBY
-         TOK_TABLE_OR_COL
-            key
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -371,36 +321,6 @@ EXPLAIN EXTENDED
 INSERT OVERWRITE TABLE outputTbl1
 SELECT key, count(1) FROM T1 where ds = '2' GROUP BY key
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_TABREF
-         TOK_TABNAME
-            T1
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_TAB
-            TOK_TABNAME
-               outputTbl1
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_TABLE_OR_COL
-               key
-         TOK_SELEXPR
-            TOK_FUNCTION
-               count
-               1
-      TOK_WHERE
-         =
-            TOK_TABLE_OR_COL
-               ds
-            '2'
-      TOK_GROUPBY
-         TOK_TABLE_OR_COL
-            key
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -451,8 +371,10 @@ STAGE PLANS:
 #### A masked pattern was here ####
               name default.t1
               numFiles 1
+              numRows 0
               partition_columns ds
               partition_columns.types string
+              rawDataSize 0
               serialization.ddl struct t1 { string key, string val}
               serialization.format 1
               serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe

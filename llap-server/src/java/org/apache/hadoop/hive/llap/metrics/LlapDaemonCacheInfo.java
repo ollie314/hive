@@ -26,6 +26,7 @@ import com.google.common.base.Objects;
  */
 public enum LlapDaemonCacheInfo implements MetricsInfo {
   CacheMetrics("Llap daemon cache related metrics"),
+  CacheCapacityRemainingPercentage("Percentage of memory available in cache"),
   CacheCapacityRemaining("Amount of memory available in cache in bytes"),
   CacheCapacityTotal("Total amount of memory allocated for cache in bytes"),
   CacheCapacityUsed("Amount of memory used in cache in bytes"),

@@ -35,6 +35,7 @@ import org.apache.hive.service.rpc.thrift.TGetOperationStatusReq;
 import org.apache.hive.service.rpc.thrift.TGetOperationStatusResp;
 import org.apache.hive.service.rpc.thrift.TOperationHandle;
 import org.apache.hive.service.rpc.thrift.TSessionHandle;
+import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.SQLTimeoutException;
 import java.sql.SQLWarning;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -109,6 +111,8 @@ public class HiveStatement implements java.sql.Statement {
    * successfully.
    */
   private boolean isExecuteStatementFailed = false;
+
+  private int queryTimeout = 0;
 
   public HiveStatement(HiveConnection connection, TCLIService.Iface client,
       TSessionHandle sessHandle) {
@@ -244,10 +248,10 @@ public class HiveStatement implements java.sql.Statement {
   @Override
   public boolean execute(String sql) throws SQLException {
     runAsyncOnServer(sql);
-    waitForOperationToComplete();
+    TGetOperationStatusResp status = waitForOperationToComplete();
 
     // The query should be completed by now
-    if (!stmtHandle.isHasResultSet()) {
+    if (!status.isHasResultSet()) {
       return false;
     }
     resultSet =  new HiveQueryResultSet.Builder(this).setClient(client).setSessionHandle(sessHandle)
@@ -274,7 +278,8 @@ public class HiveStatement implements java.sql.Statement {
    */
   public boolean executeAsync(String sql) throws SQLException {
     runAsyncOnServer(sql);
-    if (!stmtHandle.isHasResultSet()) {
+    TGetOperationStatusResp status = waitForResultSetStatus();
+    if (!status.isHasResultSet()) {
       return false;
     }
     resultSet =
@@ -295,11 +300,11 @@ public class HiveStatement implements java.sql.Statement {
      * Run asynchronously whenever possible
      * Currently only a SQLOperation can be run asynchronously,
      * in a background operation thread
-     * Compilation is synchronous and execution is asynchronous
+     * Compilation can run asynchronously or synchronously and execution run asynchronously
      */
     execReq.setRunAsync(true);
     execReq.setConfOverlay(sessConf);
-
+    execReq.setQueryTimeout(queryTimeout);
     try {
       TExecuteStatementResp execResp = client.ExecuteStatement(execReq);
       Utils.verifySuccessWithInfo(execResp.getStatus());
@@ -314,16 +319,37 @@ public class HiveStatement implements java.sql.Statement {
     }
   }
 
-  void waitForOperationToComplete() throws SQLException {
+  /**
+   * Poll the result set status by checking if isSetHasResultSet is set
+   * @return
+   * @throws SQLException
+   */
+  private TGetOperationStatusResp waitForResultSetStatus() throws SQLException {
     TGetOperationStatusReq statusReq = new TGetOperationStatusReq(stmtHandle);
-    TGetOperationStatusResp statusResp;
+    TGetOperationStatusResp statusResp = null;
+
+    while(statusResp == null || !statusResp.isSetHasResultSet()) {
+      try {
+        statusResp = client.GetOperationStatus(statusReq);
+      } catch (TException e) {
+        isLogBeingGenerated = false;
+        throw new SQLException(e.toString(), "08S01", e);
+      }
+    }
+
+    return statusResp;
+  }
+
+  TGetOperationStatusResp waitForOperationToComplete() throws SQLException {
+    TGetOperationStatusReq statusReq = new TGetOperationStatusReq(stmtHandle);
+    TGetOperationStatusResp statusResp = null;
 
     // Poll on the operation status, till the operation is complete
     while (!isOperationComplete) {
       try {
         /**
-         * For an async SQLOperation, GetOperationStatus will use the long polling approach
-         * It will essentially return after the HIVE_SERVER2_LONG_POLLING_TIMEOUT (a server config) expires
+         * For an async SQLOperation, GetOperationStatus will use the long polling approach It will
+         * essentially return after the HIVE_SERVER2_LONG_POLLING_TIMEOUT (a server config) expires
          */
         statusResp = client.GetOperationStatus(statusReq);
         Utils.verifySuccessWithInfo(statusResp.getStatus());
@@ -337,10 +363,12 @@ public class HiveStatement implements java.sql.Statement {
           case CANCELED_STATE:
             // 01000 -> warning
             throw new SQLException("Query was cancelled", "01000");
+          case TIMEDOUT_STATE:
+            throw new SQLTimeoutException("Query timed out after " + queryTimeout + " seconds");
           case ERROR_STATE:
             // Get the error details from the underlying exception
-            throw new SQLException(statusResp.getErrorMessage(),
-                statusResp.getSqlState(), statusResp.getErrorCode());
+            throw new SQLException(statusResp.getErrorMessage(), statusResp.getSqlState(),
+                statusResp.getErrorCode());
           case UKNOWN_STATE:
             throw new SQLException("Unknown query", "HY000");
           case INITIALIZED_STATE:
@@ -357,6 +385,8 @@ public class HiveStatement implements java.sql.Statement {
         throw new SQLException(e.toString(), "08S01", e);
       }
     }
+
+    return statusResp;
   }
 
   private void checkConnection(String action) throws SQLException {
@@ -786,10 +816,7 @@ public class HiveStatement implements java.sql.Statement {
 
   @Override
   public void setQueryTimeout(int seconds) throws SQLException {
-    // 0 is supported which means "no limit"
-    if (seconds != 0) {
-      throw new SQLException("Query timeout seconds must be 0");
-    }
+    this.queryTimeout = seconds;
   }
 
   /*
@@ -881,15 +908,22 @@ public class HiveStatement implements java.sql.Statement {
       }
     } catch (SQLException e) {
       throw e;
+    } catch (TException e) {
+      throw new SQLException("Error when getting query log: " + e, e);
     } catch (Exception e) {
       throw new SQLException("Error when getting query log: " + e, e);
     }
 
-    RowSet rowSet = RowSetFactory.create(tFetchResultsResp.getResults(),
-        connection.getProtocol());
-    for (Object[] row : rowSet) {
-      logs.add(String.valueOf(row[0]));
+    try {
+      RowSet rowSet;
+      rowSet = RowSetFactory.create(tFetchResultsResp.getResults(), connection.getProtocol());
+      for (Object[] row : rowSet) {
+        logs.add(String.valueOf(row[0]));
+      }
+    } catch (TException e) {
+      throw new SQLException("Error building result set for query log: " + e, e);
     }
+
     return logs;
   }
 

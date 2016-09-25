@@ -84,89 +84,6 @@ JOIN `orderpayment_small` `order_city` ON `order_city`.`cityid` = `orderpayment`
 JOIN `user_small` `user` ON `user`.`userid` = `orderpayment`.`userid`
 limit 5
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_JOIN
-         TOK_JOIN
-            TOK_JOIN
-               TOK_JOIN
-                  TOK_TABREF
-                     TOK_TABNAME
-                        orderpayment_small
-                     orderpayment
-                  TOK_TABREF
-                     TOK_TABNAME
-                        orderpayment_small
-                     dim_pay_date
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           dim_pay_date
-                        date
-                     .
-                        TOK_TABLE_OR_COL
-                           orderpayment
-                        date
-               TOK_TABREF
-                  TOK_TABNAME
-                     orderpayment_small
-                  deal
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        deal
-                     dealid
-                  .
-                     TOK_TABLE_OR_COL
-                        orderpayment
-                     dealid
-            TOK_TABREF
-               TOK_TABNAME
-                  orderpayment_small
-               order_city
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     order_city
-                  cityid
-               .
-                  TOK_TABLE_OR_COL
-                     orderpayment
-                  cityid
-         TOK_TABREF
-            TOK_TABNAME
-               user_small
-            user
-         =
-            .
-               TOK_TABLE_OR_COL
-                  user
-               userid
-            .
-               TOK_TABLE_OR_COL
-                  orderpayment
-               userid
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  dim_pay_date
-               date
-         TOK_SELEXPR
-            .
-               TOK_TABLE_OR_COL
-                  deal
-               dealid
-      TOK_LIMIT
-         5
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1
@@ -200,7 +117,7 @@ STAGE PLANS:
                   value expressions: _col0 (type: int), _col2 (type: int), _col3 (type: int)
                   auto parallelism: false
           TableScan
-            alias: orderpayment
+            alias: dim_pay_date
             Statistics: Num rows: 1 Data size: 36 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Filter Operator
@@ -267,7 +184,7 @@ STAGE PLANS:
               name: default.orderpayment_small
             name: default.orderpayment_small
       Truncated Path -> Alias:
-        /orderpayment_small [$hdt$_0:orderpayment, $hdt$_1:orderpayment]
+        /orderpayment_small [$hdt$_0:orderpayment, $hdt$_1:dim_pay_date]
       Needs Tagging: true
       Reduce Operator Tree:
         Join Operator
@@ -311,7 +228,7 @@ STAGE PLANS:
               value expressions: _col2 (type: int), _col3 (type: int), _col4 (type: string)
               auto parallelism: false
           TableScan
-            alias: orderpayment
+            alias: deal
             Statistics: Num rows: 1 Data size: 36 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Filter Operator
@@ -398,7 +315,7 @@ STAGE PLANS:
               name: default.orderpayment_small
             name: default.orderpayment_small
       Truncated Path -> Alias:
-        /orderpayment_small [$hdt$_2:orderpayment]
+        /orderpayment_small [$hdt$_2:deal]
 #### A masked pattern was here ####
       Needs Tagging: true
       Reduce Operator Tree:
@@ -443,7 +360,7 @@ STAGE PLANS:
               value expressions: _col3 (type: int), _col4 (type: string), _col5 (type: int)
               auto parallelism: false
           TableScan
-            alias: orderpayment
+            alias: order_city
             Statistics: Num rows: 1 Data size: 36 Basic stats: COMPLETE Column stats: NONE
             GatherStats: false
             Filter Operator
@@ -530,7 +447,7 @@ STAGE PLANS:
               name: default.orderpayment_small
             name: default.orderpayment_small
       Truncated Path -> Alias:
-        /orderpayment_small [$hdt$_3:orderpayment]
+        /orderpayment_small [$hdt$_3:order_city]
 #### A masked pattern was here ####
       Needs Tagging: true
       Reduce Operator Tree:

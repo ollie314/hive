@@ -170,6 +170,37 @@ public class BytesColumnVector extends ColumnVector {
   }
 
   /**
+   * Preallocate space in the local buffer so the caller can fill in the value bytes themselves.
+   *
+   * Always use with getValPreallocatedBytes, getValPreallocatedStart, and setValPreallocated.
+   */
+  public void ensureValPreallocated(int length) {
+    if ((nextFree + length) > buffer.length) {
+      increaseBufferSpace(length);
+    }
+  }
+
+  public byte[] getValPreallocatedBytes() {
+    return buffer;
+  }
+
+  public int getValPreallocatedStart() {
+    return nextFree;
+  }
+
+  /**
+   * Set the length of the preallocated values bytes used.
+   * @param elementNum
+   * @param length
+   */
+  public void setValPreallocated(int elementNum, int length) {
+    vector[elementNum] = buffer;
+    this.start[elementNum] = nextFree;
+    this.length[elementNum] = length;
+    nextFree += length;
+  }
+
+  /**
    * Set a field to the concatenation of two string values. Result data is copied
    * into the internal buffer.
    *
@@ -338,6 +369,17 @@ public class BytesColumnVector extends ColumnVector {
     initBuffer(0);
   }
 
+  public String toString(int row) {
+    if (isRepeating) {
+      row = 0;
+    }
+    if (noNulls || !isNull[row]) {
+      return new String(vector[row], start[row], length[row]);
+    } else {
+      return null;
+    }
+  }
+
   @Override
   public void stringifyValue(StringBuilder buffer, int row) {
     if (isRepeating) {
@@ -354,8 +396,8 @@ public class BytesColumnVector extends ColumnVector {
 
   @Override
   public void ensureSize(int size, boolean preserveData) {
+    super.ensureSize(size, preserveData);
     if (size > vector.length) {
-      super.ensureSize(size, preserveData);
       int[] oldStart = start;
       start = new int[size];
       int[] oldLength = length;

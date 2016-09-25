@@ -20,17 +20,6 @@ PREHOOK: type: LOAD
 POSTHOOK: query: explain extended
 load data local inpath '../../data/files/test.dat' overwrite into table hive_test_src
 POSTHOOK: type: LOAD
-ABSTRACT SYNTAX TREE:
-  
-TOK_LOAD
-   '../../data/files/test.dat'
-   TOK_TAB
-      TOK_TABNAME
-         hive_test_src
-   local
-   overwrite
-
-
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
   Stage-1 depends on stages: Stage-0
@@ -45,15 +34,20 @@ STAGE PLANS:
               input format: org.apache.hadoop.mapred.TextInputFormat
               output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
               properties:
+                COLUMN_STATS_ACCURATE {"BASIC_STATS":"true"}
                 bucket_count -1
                 columns col1
                 columns.comments 
                 columns.types string
 #### A masked pattern was here ####
                 name default.hive_test_src
+                numFiles 0
+                numRows 0
+                rawDataSize 0
                 serialization.ddl struct hive_test_src { string col1}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                totalSize 0
 #### A masked pattern was here ####
               serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
               name: default.hive_test_src
@@ -87,6 +81,8 @@ Retention:          	0
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
 	numFiles            	1                   
+	numRows             	0                   
+	rawDataSize         	0                   
 	totalSize           	11                  
 #### A masked pattern was here ####
 	 	 
@@ -136,12 +132,10 @@ POSTHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 PREHOOK: query: select count(1) from hive_test_dst
 PREHOOK: type: QUERY
 PREHOOK: Input: default@hive_test_dst
-PREHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
 POSTHOOK: query: select count(1) from hive_test_dst
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
-POSTHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
 6
 PREHOOK: query: insert overwrite table hive_test_dst partition ( pCol1='test_part', pcol2='test_Part') select col1 from hive_test_src
@@ -164,12 +158,10 @@ POSTHOOK: Input: default@hive_test_dst
 PREHOOK: query: select count(1) from hive_test_dst
 PREHOOK: type: QUERY
 PREHOOK: Input: default@hive_test_dst
-PREHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
 POSTHOOK: query: select count(1) from hive_test_dst
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@hive_test_dst
-POSTHOOK: Input: default@hive_test_dst@pcol1=test_part/pcol2=test_Part
 #### A masked pattern was here ####
 6
 PREHOOK: query: select * from hive_test_dst where pcol1='test_part'

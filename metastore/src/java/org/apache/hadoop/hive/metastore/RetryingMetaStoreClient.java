@@ -25,12 +25,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience.Public;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.annotation.NoReconnect;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.thrift.TApplicationException;
@@ -55,14 +57,14 @@ public class RetryingMetaStoreClient implements InvocationHandler {
   private final IMetaStoreClient base;
   private final int retryLimit;
   private final long retryDelaySeconds;
-  private final Map<String, Long> metaCallTimeMap;
+  private final ConcurrentHashMap<String, Long> metaCallTimeMap;
   private final long connectionLifeTimeInMillis;
   private long lastConnectionTime;
   private boolean localMetaStore;
 
 
   protected RetryingMetaStoreClient(HiveConf hiveConf, Class<?>[] constructorArgTypes,
-      Object[] constructorArgs, Map<String, Long> metaCallTimeMap,
+      Object[] constructorArgs, ConcurrentHashMap<String, Long> metaCallTimeMap,
       Class<? extends IMetaStoreClient> msClientClass) throws MetaException {
 
     this.retryLimit = hiveConf.getIntVar(HiveConf.ConfVars.METASTORETHRIFTFAILURERETRIES);
@@ -94,7 +96,7 @@ public class RetryingMetaStoreClient implements InvocationHandler {
   }
 
   public static IMetaStoreClient getProxy(HiveConf hiveConf, HiveMetaHookLoader hookLoader,
-      Map<String, Long> metaCallTimeMap, String mscClassName, boolean allowEmbedded)
+      ConcurrentHashMap<String, Long> metaCallTimeMap, String mscClassName, boolean allowEmbedded)
           throws MetaException {
 
     return getProxy(hiveConf,
@@ -119,7 +121,7 @@ public class RetryingMetaStoreClient implements InvocationHandler {
    * Please use getProxy(HiveConf hiveConf, HiveMetaHookLoader hookLoader) for external purpose.
    */
   public static IMetaStoreClient getProxy(HiveConf hiveConf, Class<?>[] constructorArgTypes,
-      Object[] constructorArgs, Map<String, Long> metaCallTimeMap,
+      Object[] constructorArgs, ConcurrentHashMap<String, Long> metaCallTimeMap,
       String mscClassName) throws MetaException {
 
     @SuppressWarnings("unchecked")
@@ -138,13 +140,20 @@ public class RetryingMetaStoreClient implements InvocationHandler {
     Object ret = null;
     int retriesMade = 0;
     TException caughtException = null;
+
+    boolean allowReconnect = ! method.isAnnotationPresent(NoReconnect.class);
+
     while (true) {
       try {
         reloginExpiringKeytabUser();
-        if (retriesMade > 0 || hasConnectionLifeTimeReached(method)) {
-          base.reconnect();
-          lastConnectionTime = System.currentTimeMillis();
+
+        if (allowReconnect) {
+          if (retriesMade > 0 || hasConnectionLifeTimeReached(method)) {
+            base.reconnect();
+            lastConnectionTime = System.currentTimeMillis();
+          }
         }
+
         if (metaCallTimeMap == null) {
           ret = method.invoke(base, args);
         } else {
@@ -175,13 +184,15 @@ public class RetryingMetaStoreClient implements InvocationHandler {
           // TODO: most protocol exceptions are probably unrecoverable... throw?
           caughtException = (TException)t;
         } else if ((t instanceof MetaException) && t.getMessage().matches(
-            "(?s).*(JDO[a-zA-Z]*|TProtocol|TTransport)Exception.*")) {
+            "(?s).*(JDO[a-zA-Z]*|TProtocol|TTransport)Exception.*") &&
+            !t.getMessage().contains("java.sql.SQLIntegrityConstraintViolationException")) {
           caughtException = (MetaException)t;
         } else {
           throw t;
         }
       } catch (MetaException e) {
-        if (e.getMessage().matches("(?s).*(IO|TTransport)Exception.*")) {
+        if (e.getMessage().matches("(?s).*(IO|TTransport)Exception.*") &&
+            !e.getMessage().contains("java.sql.SQLIntegrityConstraintViolationException")) {
           caughtException = e;
         } else {
           throw e;
@@ -189,7 +200,7 @@ public class RetryingMetaStoreClient implements InvocationHandler {
       }
 
 
-      if (retriesMade >= retryLimit) {
+      if (retriesMade >= retryLimit || base.isLocalMetaStore()) {
         throw caughtException;
       }
       retriesMade++;
@@ -202,11 +213,11 @@ public class RetryingMetaStoreClient implements InvocationHandler {
 
   private void addMethodTime(Method method, long timeTaken) {
     String methodStr = getMethodString(method);
-    Long curTime = metaCallTimeMap.get(methodStr);
-    if (curTime != null) {
-      timeTaken += curTime;
+    while (true) {
+      Long curTime = metaCallTimeMap.get(methodStr), newTime = timeTaken;
+      if (curTime != null && metaCallTimeMap.replace(methodStr, curTime, newTime + curTime)) break;
+      if (curTime == null && (null == metaCallTimeMap.putIfAbsent(methodStr, newTime))) break;
     }
-    metaCallTimeMap.put(methodStr, timeTaken);
   }
 
   /**
@@ -225,10 +236,10 @@ public class RetryingMetaStoreClient implements InvocationHandler {
   }
 
   private boolean hasConnectionLifeTimeReached(Method method) {
-    if (connectionLifeTimeInMillis <= 0 || localMetaStore ||
-        method.getName().equalsIgnoreCase("close")) {
+    if (connectionLifeTimeInMillis <= 0 || localMetaStore) {
       return false;
     }
+
     boolean shouldReconnect =
         (System.currentTimeMillis() - lastConnectionTime) >= connectionLifeTimeInMillis;
     if (LOG.isDebugEnabled()) {

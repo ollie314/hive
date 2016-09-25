@@ -93,9 +93,6 @@ public class GenSparkSkewJoinProcessor {
 
     List<Task<? extends Serializable>> children = currTask.getChildTasks();
 
-    Task<? extends Serializable> child =
-        children != null && children.size() == 1 ? children.get(0) : null;
-
     Path baseTmpDir = parseCtx.getContext().getMRTmpPath();
 
     JoinDesc joinDescriptor = joinOp.getConf();
@@ -293,10 +290,10 @@ public class GenSparkSkewJoinProcessor {
         } else {
           path = smallTblDirs.get(tags[j]);
         }
-        mapWork.getPathToAliases().put(path.toString(), aliases);
+        mapWork.addPathToAlias(path, aliases);
         mapWork.getAliasToWork().put(alias, tableScan);
         PartitionDesc partitionDesc = new PartitionDesc(tableDescList.get(tags[j]), null);
-        mapWork.getPathToPartitionInfo().put(path.toString(), partitionDesc);
+        mapWork.addPathToPartitionInfo(path, partitionDesc);
         mapWork.getAliasToPartnInfo().put(alias, partitionDesc);
         mapWork.setName("Map " + GenSparkUtils.getUtils().getNextSeqNumber());
       }
@@ -334,14 +331,17 @@ public class GenSparkSkewJoinProcessor {
           tsk.addDependentTask(oldChild);
         }
       }
-    }
-    if (child != null) {
-      currTask.removeDependentTask(child);
-      listTasks.add(child);
-      listWorks.add(child.getWork());
+      currTask.setChildTasks(new ArrayList<Task<? extends Serializable>>());
+      for (Task<? extends Serializable> oldChild : children) {
+        oldChild.getParentTasks().remove(currTask);
+      }
+      listTasks.addAll(children);
+      for (Task<? extends Serializable> oldChild : children) {
+        listWorks.add(oldChild.getWork());
+      }
     }
     ConditionalResolverSkewJoin.ConditionalResolverSkewJoinCtx context =
-        new ConditionalResolverSkewJoin.ConditionalResolverSkewJoinCtx(bigKeysDirToTaskMap, child);
+        new ConditionalResolverSkewJoin.ConditionalResolverSkewJoinCtx(bigKeysDirToTaskMap, children);
 
     ConditionalWork cndWork = new ConditionalWork(listWorks);
     ConditionalTask cndTsk = (ConditionalTask) TaskFactory.get(cndWork, parseCtx.getConf());

@@ -108,6 +108,16 @@ public class SecureProxySupport {
   public void close() {
     if (tokenPath != null) {
       new File(tokenPath.toUri()).delete();
+      String checksumStr = tokenPath.getParent() + File.separator + "." + tokenPath.getName() + ".crc";
+      File checksumFile = null;
+      try {
+        checksumFile = new File(new URI(checksumStr));
+        if (checksumFile.exists()) {
+          checksumFile.delete();
+        }
+      } catch (URISyntaxException e) {
+        LOG.error("Failed to delete token crc file.", e);
+      }
       tokenPath = null;
     }
   }
@@ -128,7 +138,7 @@ public class SecureProxySupport {
   public void addArgs(List<String> args) {
     if (isEnabled) {
       args.add("-D");
-      args.add("hive.metastore.token.signature=" + getHcatServiceStr());
+      args.add(HiveConf.ConfVars.METASTORE_TOKEN_SIGNATURE + "=" + getHcatServiceStr());
       args.add("-D");
       args.add("proxy.user.name=" + user);
     }

@@ -38,22 +38,27 @@ import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.StringColumnStatsData;
 import org.apache.hadoop.hive.ql.index.HiveIndex;
 import org.apache.hadoop.hive.ql.index.HiveIndex.IndexType;
+import org.apache.hadoop.hive.ql.metadata.ForeignKeyInfo;
 import org.apache.hadoop.hive.ql.metadata.Partition;
+import org.apache.hadoop.hive.ql.metadata.PrimaryKeyInfo;
 import org.apache.hadoop.hive.ql.metadata.Table;
+import org.apache.hadoop.hive.ql.metadata.ForeignKeyInfo.ForeignKeyCol;
 import org.apache.hadoop.hive.ql.plan.DescTableDesc;
 import org.apache.hadoop.hive.ql.plan.PlanUtils;
 import org.apache.hadoop.hive.ql.plan.ShowIndexesDesc;
 import org.apache.hadoop.hive.serde2.io.DateWritable;
+import org.apache.hive.common.util.HiveStringUtils;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 
 
 /**
@@ -106,6 +111,7 @@ public final class MetaDataFormatUtils {
    * @param printHeader - if header should be included
    * @param isOutputPadded - make it more human readable by setting indentation
    *        with spaces. Turned off for use by HiveServer2
+   * @param showParColsSep - show partition column separator
    * @return string with formatted column information
    */
   public static String getAllColumnsInformation(List<FieldSchema> cols,
@@ -269,6 +275,69 @@ public final class MetaDataFormatUtils {
     return indexInfo.toString();
   }
 
+  public static String getConstraintsInformation(PrimaryKeyInfo pkInfo, ForeignKeyInfo fkInfo) {
+    StringBuilder constraintsInfo = new StringBuilder(DEFAULT_STRINGBUILDER_SIZE);
+
+    constraintsInfo.append(LINE_DELIM).append("# Constraints").append(LINE_DELIM);
+    if (pkInfo != null && !pkInfo.getColNames().isEmpty()) {
+      constraintsInfo.append(LINE_DELIM).append("# Primary Key").append(LINE_DELIM);
+      getPrimaryKeyInformation(constraintsInfo, pkInfo);
+    }
+    if (fkInfo != null && !fkInfo.getForeignKeys().isEmpty()) {
+      constraintsInfo.append(LINE_DELIM).append("# Foreign Keys").append(LINE_DELIM);
+      getForeignKeysInformation(constraintsInfo, fkInfo);
+    }
+    return constraintsInfo.toString();
+  }
+
+  private static void  getPrimaryKeyInformation(StringBuilder constraintsInfo,
+    PrimaryKeyInfo pkInfo) {
+    formatOutput("Table:", pkInfo.getDatabaseName()+"."+pkInfo.getTableName(), constraintsInfo);
+    formatOutput("Constraint Name:", pkInfo.getConstraintName(), constraintsInfo);
+    Map<Integer, String> colNames = pkInfo.getColNames();
+    final String columnNames = "Column Names:";
+    constraintsInfo.append(String.format("%-" + ALIGNMENT + "s", columnNames)).append(FIELD_DELIM);
+    if (colNames != null && colNames.size() > 0) {
+      formatOutput(colNames.values().toArray(new String[colNames.size()]), constraintsInfo);
+    }
+  }
+
+  private static void getForeignKeyColInformation(StringBuilder constraintsInfo,
+    ForeignKeyCol fkCol) {
+      String[] fkcFields = new String[3];
+      fkcFields[0] = "Parent Column Name:" + fkCol.parentDatabaseName +
+          "."+ fkCol.parentTableName + "." + fkCol.parentColName;
+      fkcFields[1] = "Column Name:" + fkCol.childColName;
+      fkcFields[2] = "Key Sequence:" + fkCol.position;
+      formatOutput(fkcFields, constraintsInfo);
+  }
+
+  private static void getForeignKeyRelInformation(
+    StringBuilder constraintsInfo,
+    String constraintName,
+    List<ForeignKeyCol> fkRel) {
+    formatOutput("Constraint Name:", constraintName, constraintsInfo);
+    if (fkRel != null && fkRel.size() > 0) {
+      for (ForeignKeyCol fkc : fkRel) {
+        getForeignKeyColInformation(constraintsInfo, fkc);
+      }
+    }
+    constraintsInfo.append(LINE_DELIM);
+  }
+
+  private static void  getForeignKeysInformation(StringBuilder constraintsInfo,
+    ForeignKeyInfo fkInfo) {
+    formatOutput("Table:",
+                 fkInfo.getChildDatabaseName()+"."+fkInfo.getChildTableName(),
+                 constraintsInfo);
+    Map<String, List<ForeignKeyCol>> foreignKeys = fkInfo.getForeignKeys();
+    if (foreignKeys != null && foreignKeys.size() > 0) {
+      for (Map.Entry<String, List<ForeignKeyCol>> me : foreignKeys.entrySet()) {
+        getForeignKeyRelInformation(constraintsInfo, me.getKey(), me.getValue());
+      }
+    }
+  }
+
   public static String getPartitionInformation(Partition part) {
     StringBuilder tableInfo = new StringBuilder(DEFAULT_STRINGBUILDER_SIZE);
 
@@ -324,22 +393,23 @@ public final class MetaDataFormatUtils {
     }
 
     if (null != storageDesc.getSkewedInfo()) {
-      List<String> skewedColNames = storageDesc.getSkewedInfo().getSkewedColNames();
+      List<String> skewedColNames = sortedList(storageDesc.getSkewedInfo().getSkewedColNames());
       if ((skewedColNames != null) && (skewedColNames.size() > 0)) {
         formatOutput("Skewed Columns:", skewedColNames.toString(), tableInfo);
       }
 
-      List<List<String>> skewedColValues = storageDesc.getSkewedInfo().getSkewedColValues();
+      List<List<String>> skewedColValues = sortedList(
+          storageDesc.getSkewedInfo().getSkewedColValues(), new VectorComparator<String>());
       if ((skewedColValues != null) && (skewedColValues.size() > 0)) {
         formatOutput("Skewed Values:", skewedColValues.toString(), tableInfo);
       }
 
-      Map<List<String>, String> skewedColMap = storageDesc.getSkewedInfo()
-          .getSkewedColValueLocationMaps();
+      Map<List<String>, String> skewedColMap = new TreeMap<>(new VectorComparator<String>());
+      skewedColMap.putAll(storageDesc.getSkewedInfo().getSkewedColValueLocationMaps());
       if ((skewedColMap!=null) && (skewedColMap.size() > 0)) {
         formatOutput("Skewed Value to Path:", skewedColMap.toString(),
             tableInfo);
-        Map<List<String>, String> truncatedSkewedColMap = new HashMap<List<String>, String>();
+        Map<List<String>, String> truncatedSkewedColMap = new TreeMap<List<String>, String>(new VectorComparator<String>());
         // walk through existing map to truncate path so that test won't mask it
         // then we can verify location is right
         Set<Entry<List<String>, String>> entries = skewedColMap.entrySet();
@@ -371,7 +441,7 @@ public final class MetaDataFormatUtils {
 
     if (tbl.getParameters().size() > 0) {
       tableInfo.append("Table Parameters:").append(LINE_DELIM);
-      displayAllParameters(tbl.getParameters(), tableInfo);
+      displayAllParameters(tbl.getParameters(), tableInfo, false);
     }
   }
 
@@ -390,19 +460,88 @@ public final class MetaDataFormatUtils {
     }
   }
 
+  /**
+   * Display key, value pairs of the parameters. The characters will be escaped
+   * including unicode.
+   */
   private static void displayAllParameters(Map<String, String> params, StringBuilder tableInfo) {
+    displayAllParameters(params, tableInfo, true);
+  }
+
+  /**
+   * Display key, value pairs of the parameters. The characters will be escaped
+   * including unicode if escapeUnicode is true; otherwise the characters other
+   * than unicode will be escaped.
+   */
+
+  private static void displayAllParameters(Map<String, String> params, StringBuilder tableInfo, boolean escapeUnicode) {
     List<String> keys = new ArrayList<String>(params.keySet());
     Collections.sort(keys);
     for (String key : keys) {
       tableInfo.append(FIELD_DELIM); // Ensures all params are indented.
-      formatOutput(key, StringEscapeUtils.escapeJava(params.get(key)), tableInfo);
+      formatOutput(key,
+          escapeUnicode ? StringEscapeUtils.escapeJava(params.get(key)) : HiveStringUtils.escapeJava(params.get(key)),
+          tableInfo);
     }
   }
 
   static String getComment(FieldSchema col) {
     return col.getComment() != null ? col.getComment() : "";
   }
+  
+  /**
+   * Compares to lists of object T as vectors
+   * 
+   * @param <T> the base object type. Must be {@link Comparable}
+   */
+  private static class VectorComparator<T extends Comparable<T>>  implements Comparator<List<T>>{
 
+    @Override
+    public int compare(List<T> listA, List<T> listB) {
+      for (int i = 0; i < listA.size() && i < listB.size(); i++) {
+        T valA = listA.get(i);
+        T valB = listB.get(i);
+        if (valA != null) {
+          int ret = valA.compareTo(valB);
+          if (ret != 0) {
+            return ret;
+          }
+        } else {
+          if (valB != null) {
+            return -1;
+          }
+        }
+      }
+      return Integer.compare(listA.size(), listB.size());
+    }
+  }
+  
+  /**
+   * Returns a sorted version of the given list
+   */
+  static <T extends Comparable<T>> List<T> sortedList(List<T> list){
+    if (list == null || list.size() <= 1) {
+      return list;
+    }
+    ArrayList<T> ret = new ArrayList<>();
+    ret.addAll(list);
+    Collections.sort(ret);
+    return ret;
+  }
+
+  /**
+   * Returns a sorted version of the given list, using the provided comparator
+   */
+  static <T> List<T> sortedList(List<T> list, Comparator<T> comp) {
+    if (list == null || list.size() <= 1) {
+      return list;
+    }
+    ArrayList<T> ret = new ArrayList<>();
+    ret.addAll(list);
+    Collections.sort(ret,comp);
+    return ret;
+  }
+  
   private static String formatDate(long timeInSeconds) {
     if (timeInSeconds != 0) {
       Date date = new Date(timeInSeconds * 1000);

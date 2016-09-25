@@ -46,6 +46,7 @@ import org.apache.hadoop.hive.conf.HiveConf.StrictChecks;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
 import org.apache.hadoop.hive.ql.exec.FilterOperator;
 import org.apache.hadoop.hive.ql.exec.JoinOperator;
+import org.apache.hadoop.hive.ql.exec.LimitOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.OperatorFactory;
 import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
@@ -148,9 +149,19 @@ public class HiveOpConverter {
     }
   }
 
+  private void handleTopLimit(Operator<?> rootOp) {
+    if (rootOp instanceof LimitOperator) {
+      // this can happen only on top most limit, not while visiting Limit Operator
+      // since that can be within subquery.
+      this.semanticAnalyzer.getQB().getParseInfo().setOuterQueryLimit(((LimitOperator) rootOp).getConf().getLimit());
+    }
+  }
+
   public Operator convert(RelNode root) throws SemanticException {
     OpAttr opAf = dispatch(root);
-    return opAf.inputs.get(0);
+    Operator rootOp = opAf.inputs.get(0);
+    handleTopLimit(rootOp);
+    return rootOp;
   }
 
   OpAttr dispatch(RelNode rn) throws SemanticException {
@@ -278,7 +289,8 @@ public class HiveOpConverter {
     for (int pos = 0; pos < projectRel.getChildExps().size(); pos++) {
       ExprNodeConverter converter = new ExprNodeConverter(inputOpAf.tabAlias, projectRel
           .getRowType().getFieldNames().get(pos), projectRel.getInput().getRowType(),
-          projectRel.getRowType(), inputOpAf.vcolsInCalcite, projectRel.getCluster().getTypeFactory());
+          projectRel.getRowType(), inputOpAf.vcolsInCalcite, projectRel.getCluster().getTypeFactory(),
+          true);
       ExprNodeDesc exprCol = projectRel.getChildExps().get(pos).accept(converter);
       colExprMap.put(exprNames.get(pos), exprCol);
       exprCols.add(exprCol);
@@ -489,12 +501,8 @@ public class HiveOpConverter {
     // 2. If we need to generate limit
     if (sortRel.fetch != null) {
       int limit = RexLiteral.intValue(sortRel.fetch);
-      LimitDesc limitDesc = new LimitDesc(limit);
-      // Because we are visiting the operators recursively, the last limit op that
-      // calls the following function will set the global property.
-      if (this.semanticAnalyzer != null && semanticAnalyzer.getQB() != null
-          && semanticAnalyzer.getQB().getParseInfo() != null)
-        this.semanticAnalyzer.getQB().getParseInfo().setOuterQueryLimit(limit);
+      int offset = sortRel.offset == null ? 0 : RexLiteral.intValue(sortRel.offset);
+      LimitDesc limitDesc = new LimitDesc(offset,limit);
       ArrayList<ColumnInfo> cinfoLst = createColInfos(resultOp);
       resultOp = OperatorFactory.getAndMakeChild(limitDesc, new RowSchema(cinfoLst), resultOp);
 
@@ -520,7 +528,7 @@ public class HiveOpConverter {
 
     ExprNodeDesc filCondExpr = filterRel.getCondition().accept(
         new ExprNodeConverter(inputOpAf.tabAlias, filterRel.getInput().getRowType(), inputOpAf.vcolsInCalcite,
-            filterRel.getCluster().getTypeFactory()));
+            filterRel.getCluster().getTypeFactory(), true));
     FilterDesc filDesc = new FilterDesc(filCondExpr, false);
     ArrayList<ColumnInfo> cinfoLst = createColInfos(inputOpAf.inputs.get(0));
     FilterOperator filOp = (FilterOperator) OperatorFactory.getAndMakeChild(filDesc,
@@ -993,6 +1001,7 @@ public class HiveOpConverter {
         childOps[0].getCompilationOpContext(), desc, new RowSchema(outputColumns), childOps);
     joinOp.setColumnExprMap(colExprMap);
     joinOp.setPosToAliasMap(posToAliasMap);
+    joinOp.getConf().setBaseSrc(baseSrc);
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Generated " + joinOp + " with row schema: [" + joinOp.getSchema() + "]");
@@ -1164,7 +1173,7 @@ public class HiveOpConverter {
   private static ExprNodeDesc convertToExprNode(RexNode rn, RelNode inputRel, String tabAlias,
           Set<Integer> vcolsInCalcite) {
     return rn.accept(new ExprNodeConverter(tabAlias, inputRel.getRowType(), vcolsInCalcite,
-        inputRel.getCluster().getTypeFactory()));
+        inputRel.getCluster().getTypeFactory(), true));
   }
 
   private static ArrayList<ColumnInfo> createColInfos(Operator<?> input) {

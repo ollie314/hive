@@ -79,6 +79,7 @@ import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.io.IOUtils;
+import org.apache.hive.common.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,7 +103,6 @@ public class CliDriver {
   private final LogHelper console;
   protected ConsoleReader reader;
   private Configuration conf;
-  private final String originalThreadName;
 
   public CliDriver() {
     SessionState ss = SessionState.get();
@@ -112,7 +112,6 @@ public class CliDriver {
       LOG.debug("CliDriver inited with classpath {}", System.getProperty("java.class.path"));
     }
     console = new LogHelper(LOG);
-    originalThreadName = Thread.currentThread().getName();
   }
 
   public int processCmd(String cmd) {
@@ -120,8 +119,6 @@ public class CliDriver {
     ss.setLastCommand(cmd);
 
     ss.updateThreadName();
-
-    conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, QueryPlan.makeQueryId());
 
     // Flush the print stream, so it doesn't include output from the last command
     ss.err.flush();
@@ -192,7 +189,7 @@ public class CliDriver {
       }
     }
 
-    Thread.currentThread().setName(originalThreadName);
+    ss.resetThreadName();
     return ret;
   }
 
@@ -401,9 +398,6 @@ public class CliDriver {
         }
 
         ret = processCmd(command);
-        //wipe cli query state
-        SessionState ss = SessionState.get();
-        ss.setCommandType(null);
         command = "";
         lastRet = ret;
         boolean ignoreErrors = HiveConf.getBoolVar(conf, HiveConf.ConfVars.CLIIGNOREERRORS);
@@ -720,6 +714,7 @@ public class CliDriver {
     try {
       return executeDriver(ss, conf, oproc);
     } finally {
+      ss.resetThreadName();
       ss.close();
     }
   }
@@ -814,7 +809,7 @@ public class CliDriver {
     }
 
     // add shutdown hook to flush the history to history file
-    Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+    ShutdownHookManager.addShutdownHook(new Runnable() {
       @Override
       public void run() {
         History h = reader.getHistory();
@@ -826,7 +821,7 @@ public class CliDriver {
           }
         }
       }
-    }));
+    });
   }
 
   protected void setupConsoleReader() throws IOException {

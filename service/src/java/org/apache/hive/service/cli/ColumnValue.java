@@ -27,6 +27,7 @@ import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
 import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
 import org.apache.hadoop.hive.common.type.HiveVarchar;
+import org.apache.hadoop.hive.serde2.thrift.Type;
 import org.apache.hive.service.rpc.thrift.TBoolValue;
 import org.apache.hive.service.rpc.thrift.TByteValue;
 import org.apache.hive.service.rpc.thrift.TColumnValue;
@@ -257,13 +258,6 @@ public class ColumnValue {
   private static String getStringValue(TStringValue tStringValue) {
     if (tStringValue.isSetValue()) {
       return tStringValue.getValue();
-    }
-    return null;
-  }
-
-  private static Date getDateValue(TStringValue tStringValue) {
-    if (tStringValue.isSetValue()) {
-      return Date.valueOf(tStringValue.getValue());
     }
     return null;
   }

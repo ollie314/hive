@@ -42,7 +42,7 @@ public class LocalCommand {
   public LocalCommand(Logger logger, OutputPolicy outputPolicy, String command) throws IOException {
     this.commandId = localCommandCounter.incrementAndGet();
     this.logger = logger;
-    logger.info("Starting LocalCommandId={}: {}" + commandId, command);
+    logger.info("Starting LocalCommandId={}: {}", commandId, command);
     stopwatch.start();
     process = new ProcessBuilder().command(new String[] {"bash", "-c", command}).redirectErrorStream(true).start();
     streamReader = new StreamReader(outputPolicy, process.getInputStream());
@@ -53,13 +53,22 @@ public class LocalCommand {
 
   public int getExitCode() throws InterruptedException {
     synchronized (process) {
-      if(exitCode == null) {
-        exitCode = process.waitFor();
-      }
-      stopwatch.stop();
-      logger.info("Finished LocalCommandId={}. ElapsedTime(seconds)={}", commandId, stopwatch.elapsed(
-          TimeUnit.SECONDS));
+      awaitProcessCompletion();
       return exitCode;
+    }
+  }
+
+  private void awaitProcessCompletion() throws InterruptedException {
+    synchronized (process) {
+      if (exitCode == null) {
+        exitCode = process.waitFor();
+        if (stopwatch.isRunning()) {
+          stopwatch.stop();
+          logger.info("Finished LocalCommandId={}. ElapsedTime(ms)={}", commandId,
+              stopwatch.elapsed(
+                  TimeUnit.MILLISECONDS));
+        }
+      }
     }
   }
 

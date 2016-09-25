@@ -462,16 +462,16 @@ Sort Columns:       	[]
 Storage Desc Params:	 	 
 	serialization.format	1                   
 PREHOOK: query: explain create table if not exists nzhang_ctas3 as select key, value from src sort by key, value limit 2
-PREHOOK: type: CREATETABLE
+PREHOOK: type: CREATETABLE_AS_SELECT
 POSTHOOK: query: explain create table if not exists nzhang_ctas3 as select key, value from src sort by key, value limit 2
-POSTHOOK: type: CREATETABLE
+POSTHOOK: type: CREATETABLE_AS_SELECT
 STAGE DEPENDENCIES:
 
 STAGE PLANS:
 PREHOOK: query: create table if not exists nzhang_ctas3 as select key, value from src sort by key, value limit 2
-PREHOOK: type: CREATETABLE
+PREHOOK: type: CREATETABLE_AS_SELECT
 POSTHOOK: query: create table if not exists nzhang_ctas3 as select key, value from src sort by key, value limit 2
-POSTHOOK: type: CREATETABLE
+POSTHOOK: type: CREATETABLE_AS_SELECT
 PREHOOK: query: select * from nzhang_ctas3
 PREHOOK: type: QUERY
 PREHOOK: Input: default@nzhang_ctas3
@@ -678,49 +678,6 @@ PREHOOK: query: explain extended create table nzhang_ctas5 row format delimited 
 PREHOOK: type: CREATETABLE_AS_SELECT
 POSTHOOK: query: explain extended create table nzhang_ctas5 row format delimited fields terminated by ',' lines terminated by '\012' stored as textfile as select key, value from src sort by key, value limit 10
 POSTHOOK: type: CREATETABLE_AS_SELECT
-ABSTRACT SYNTAX TREE:
-  
-TOK_CREATETABLE
-   TOK_TABNAME
-      nzhang_ctas5
-   TOK_LIKETABLE
-   TOK_TABLEROWFORMAT
-      TOK_SERDEPROPS
-         TOK_TABLEROWFORMATFIELD
-            ','
-         TOK_TABLEROWFORMATLINES
-            '\012'
-   TOK_FILEFORMAT_GENERIC
-      textfile
-   TOK_QUERY
-      TOK_FROM
-         TOK_TABREF
-            TOK_TABNAME
-               src
-      TOK_INSERT
-         TOK_DESTINATION
-            TOK_DIR
-               TOK_TMP_FILE
-         TOK_SELECT
-            TOK_SELEXPR
-               TOK_TABLE_OR_COL
-                  key
-            TOK_SELEXPR
-               TOK_TABLE_OR_COL
-                  value
-         TOK_SORTBY
-            TOK_TABSORTCOLNAMEASC
-               TOK_NULLS_FIRST
-                  TOK_TABLE_OR_COL
-                     key
-            TOK_TABSORTCOLNAMEASC
-               TOK_NULLS_FIRST
-                  TOK_TABLE_OR_COL
-                     value
-         TOK_LIMIT
-            10
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -763,7 +720,7 @@ STAGE PLANS:
                   input format: org.apache.hadoop.mapred.TextInputFormat
                   output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                   properties:
-                    COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                    COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                     bucket_count -1
                     columns key,value
                     columns.comments 'default','default'
@@ -783,7 +740,7 @@ STAGE PLANS:
                     input format: org.apache.hadoop.mapred.TextInputFormat
                     output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
                     properties:
-                      COLUMN_STATS_ACCURATE {"COLUMN_STATS":{"key":"true","value":"true"},"BASIC_STATS":"true"}
+                      COLUMN_STATS_ACCURATE {"BASIC_STATS":"true","COLUMN_STATS":{"key":"true","value":"true"}}
                       bucket_count -1
                       columns key,value
                       columns.comments 'default','default'

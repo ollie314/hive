@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec;
 
-import java.util.ArrayList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.beans.DefaultPersistenceDelegate;
@@ -36,6 +35,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLDecoder;
@@ -112,6 +112,7 @@ import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hadoop.hive.ql.exec.tez.DagUtils;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
+import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
@@ -139,6 +140,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveUtils;
 import org.apache.hadoop.hive.ql.metadata.InputEstimator;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
+import org.apache.hadoop.hive.ql.optimizer.physical.Vectorizer;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.plan.BaseWork;
 import org.apache.hadoop.hive.ql.plan.DynamicPartitionCtx;
@@ -158,6 +160,7 @@ import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.stats.StatsFactory;
 import org.apache.hadoop.hive.ql.stats.StatsPublisher;
 import org.apache.hadoop.hive.serde.serdeConstants;
+import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.Serializer;
@@ -168,6 +171,8 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.StandardStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.SequenceFile;
@@ -208,6 +213,7 @@ public final class Utilities {
    */
 
   public static String HADOOP_LOCAL_FS = "file:///";
+  public static final String HADOOP_LOCAL_FS_SCHEME = "file";
   public static String MAP_PLAN_NAME = "map.xml";
   public static String REDUCE_PLAN_NAME = "reduce.xml";
   public static String MERGE_PLAN_NAME = "merge.xml";
@@ -216,6 +222,7 @@ public final class Utilities {
   public static final String MAPRED_REDUCER_CLASS = "mapred.reducer.class";
   public static final String HIVE_ADDED_JARS = "hive.added.jars";
   public static final String VECTOR_MODE = "VECTOR_MODE";
+  public static final String USE_VECTORIZED_INPUT_FILE_FORMAT = "USE_VECTORIZED_INPUT_FILE_FORMAT";
   public static String MAPNAME = "Map ";
   public static String REDUCENAME = "Reducer ";
 
@@ -386,11 +393,16 @@ public final class Utilities {
 
       path = getPlanPath(conf, name);
       LOG.info("PLAN PATH = " + path);
-      assert path != null;
+      if (path == null) { // Map/reduce plan may not be generated
+        return null;
+      }
+
       BaseWork gWork = gWorkMap.get(conf).get(path);
       if (gWork == null) {
         Path localPath = path;
         LOG.debug("local path = " + localPath);
+        final long serializedSize;
+        final String planMode;
         if (HiveConf.getBoolVar(conf, ConfVars.HIVE_RPC_QUERY_PLAN)) {
           LOG.debug("Loading plan from string: "+path.toUri().getPath());
           String planString = conf.getRaw(path.toUri().getPath());
@@ -398,12 +410,17 @@ public final class Utilities {
             LOG.info("Could not find plan string in conf");
             return null;
           }
+          serializedSize = planString.length();
+          planMode = "RPC";
           byte[] planBytes = Base64.decodeBase64(planString);
           in = new ByteArrayInputStream(planBytes);
           in = new InflaterInputStream(in);
         } else {
           LOG.debug("Open file to read in plan: " + localPath);
-          in = localPath.getFileSystem(conf).open(localPath);
+          FileSystem fs = localPath.getFileSystem(conf);
+          in = fs.open(localPath);
+          serializedSize = fs.getFileStatus(localPath).getLen();
+          planMode = "FILE";
         }
 
         if(MAP_PLAN_NAME.equals(name)){
@@ -435,6 +452,8 @@ public final class Utilities {
             throw new RuntimeException("Unknown work type: " + name);
           }
         }
+        LOG.info("Deserialized plan (via {}) - name: {} size: {}", planMode,
+            gWork.getName(), humanReadableByteCount(serializedSize));
         gWorkMap.get(conf).put(path, gWork);
       } else if (LOG.isDebugEnabled()) {
         LOG.debug("Found plan in cache for name: " + name);
@@ -442,12 +461,11 @@ public final class Utilities {
       return gWork;
     } catch (FileNotFoundException fnf) {
       // happens. e.g.: no reduce work.
-      LOG.debug("File not found: " + fnf.getMessage());
-      LOG.info("No plan file found: "+path);
+      LOG.debug("No plan file found: " + path, fnf);
       return null;
     } catch (Exception e) {
-      String msg = "Failed to load plan: " + path + ": " + e;
-      LOG.error(msg, e);
+      String msg = "Failed to load plan: " + path;
+      LOG.error("Failed to load plan: " + path, e);
       throw new RuntimeException(msg, e);
     } finally {
       SerializationUtilities.releaseKryo(kryo);
@@ -524,6 +542,8 @@ public final class Utilities {
 
       OutputStream out = null;
 
+      final long serializedSize;
+      final String planMode;
       if (HiveConf.getBoolVar(conf, ConfVars.HIVE_RPC_QUERY_PLAN)) {
         // add it to the conf
         ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
@@ -535,9 +555,10 @@ public final class Utilities {
         } finally {
           IOUtils.closeStream(out);
         }
-        LOG.info("Setting plan: "+planPath.toUri().getPath());
-        conf.set(planPath.toUri().getPath(),
-            Base64.encodeBase64String(byteOut.toByteArray()));
+        final String serializedPlan = Base64.encodeBase64String(byteOut.toByteArray());
+        serializedSize = serializedPlan.length();
+        planMode = "RPC";
+        conf.set(planPath.toUri().getPath(), serializedPlan);
       } else {
         // use the default file system of the conf
         FileSystem fs = planPath.getFileSystem(conf);
@@ -546,6 +567,9 @@ public final class Utilities {
           SerializationUtilities.serializePlan(kryo, w, out);
           out.close();
           out = null;
+          long fileLen = fs.getFileStatus(planPath).getLen();
+          serializedSize = fileLen;
+          planMode = "FILE";
         } finally {
           IOUtils.closeStream(out);
         }
@@ -568,6 +592,8 @@ public final class Utilities {
         }
       }
 
+      LOG.info("Serialized plan (via {}) - name: {} size: {}", planMode, w.getName(),
+          humanReadableByteCount(serializedSize));
       // Cache the plan in this process
       gWorkMap.get(conf).put(planPath, w);
       return planPath;
@@ -707,7 +733,7 @@ public final class Utilities {
   }
 
   public static PartitionDesc getPartitionDesc(Partition part) throws HiveException {
-    return (new PartitionDesc(part));
+    return new PartitionDesc(part);
   }
 
   public static PartitionDesc getPartitionDescFromTableDesc(TableDesc tblDesc, Partition part,
@@ -1373,10 +1399,11 @@ public final class Utilities {
     Path tmpPath = Utilities.toTempPath(specPath);
     Path taskTmpPath = Utilities.toTaskTempPath(specPath);
     if (success) {
-      if (fs.exists(tmpPath)) {
+      FileStatus[] statuses = HiveStatsUtils.getFileStatusRecurse(
+          tmpPath, ((dpCtx == null) ? 1 : dpCtx.getNumDPCols()), fs);
+      if(statuses != null && statuses.length > 0) {
         // remove any tmp file or double-committed output files
-        ArrayList<String> emptyBuckets =
-            Utilities.removeTempOrDuplicateFiles(fs, tmpPath, dpCtx, conf, hconf);
+        List<Path> emptyBuckets = Utilities.removeTempOrDuplicateFiles(fs, statuses, dpCtx, conf, hconf);
         // create empty buckets if necessary
         if (emptyBuckets.size() > 0) {
           createEmptyBuckets(hconf, emptyBuckets, conf, reporter);
@@ -1403,7 +1430,7 @@ public final class Utilities {
    * @throws HiveException
    * @throws IOException
    */
-  private static void createEmptyBuckets(Configuration hconf, ArrayList<String> paths,
+  private static void createEmptyBuckets(Configuration hconf, List<Path> paths,
       FileSinkDesc conf, Reporter reporter)
       throws HiveException, IOException {
 
@@ -1431,8 +1458,7 @@ public final class Utilities {
       throw new HiveException(e);
     }
 
-    for (String p : paths) {
-      Path path = new Path(p);
+    for (Path path : paths) {
       RecordWriter writer = HiveFileFormatUtils.getRecordWriter(
           jc, hiveOutputFormat, outputClass, isCompressed,
           tableInfo.getProperties(), path, reporter);
@@ -1448,21 +1474,31 @@ public final class Utilities {
     removeTempOrDuplicateFiles(fs, path, null,null,null);
   }
 
+  public static List<Path> removeTempOrDuplicateFiles(FileSystem fs, Path path,
+      DynamicPartitionCtx dpCtx, FileSinkDesc conf, Configuration hconf) throws IOException {
+    if (path  == null) {
+      return null;
+    }
+    FileStatus[] stats = HiveStatsUtils.getFileStatusRecurse(path,
+        ((dpCtx == null) ? 1 : dpCtx.getNumDPCols()), fs);
+    return removeTempOrDuplicateFiles(fs, stats, dpCtx, conf, hconf);
+  }
+
   /**
    * Remove all temporary files and duplicate (double-committed) files from a given directory.
    *
    * @return a list of path names corresponding to should-be-created empty buckets.
    */
-  public static ArrayList<String> removeTempOrDuplicateFiles(FileSystem fs, Path path,
+  public static List<Path> removeTempOrDuplicateFiles(FileSystem fs, FileStatus[] fileStats,
       DynamicPartitionCtx dpCtx, FileSinkDesc conf, Configuration hconf) throws IOException {
-    if (path == null) {
+    if (fileStats == null) {
       return null;
     }
 
-    ArrayList<String> result = new ArrayList<String>();
+    List<Path> result = new ArrayList<Path>();
     HashMap<String, FileStatus> taskIDToFile = null;
     if (dpCtx != null) {
-      FileStatus parts[] = HiveStatsUtils.getFileStatusRecurse(path, dpCtx.getNumDPCols(), fs);
+      FileStatus parts[] = fileStats;
 
       for (int i = 0; i < parts.length; ++i) {
         assert parts[i].isDir() : "dynamic partition " + parts[i].getPath()
@@ -1490,14 +1526,18 @@ public final class Utilities {
             String taskID2 = replaceTaskId(taskID1, j);
             if (!taskIDToFile.containsKey(taskID2)) {
               // create empty bucket, file name should be derived from taskID2
-              String path2 = replaceTaskIdFromFilename(bucketPath.toUri().getPath().toString(), j);
-              result.add(path2);
+              URI bucketUri = bucketPath.toUri();
+              String path2 = replaceTaskIdFromFilename(bucketUri.getPath().toString(), j);
+              result.add(new Path(bucketUri.getScheme(), bucketUri.getAuthority(), path2));
             }
           }
         }
       }
     } else {
-      FileStatus[] items = fs.listStatus(path);
+      FileStatus[] items = fileStats;
+      if (items.length == 0) {
+        return result;
+      }
       taskIDToFile = removeTempOrDuplicateFiles(items, fs);
       if(taskIDToFile != null && taskIDToFile.size() > 0 && conf != null && conf.getTable() != null
           && (conf.getTable().getNumBuckets() > taskIDToFile.size()) && !"tez".equalsIgnoreCase(hconf.get(ConfVars.HIVE_EXECUTION_ENGINE.varname))) {
@@ -1508,8 +1548,9 @@ public final class Utilities {
           String taskID2 = replaceTaskId(taskID1, j);
           if (!taskIDToFile.containsKey(taskID2)) {
             // create empty bucket, file name should be derived from taskID2
-            String path2 = replaceTaskIdFromFilename(bucketPath.toUri().getPath().toString(), j);
-            result.add(path2);
+            URI bucketUri = bucketPath.toUri();
+            String path2 = replaceTaskIdFromFilename(bucketUri.getPath().toString(), j);
+            result.add(new Path(bucketUri.getScheme(), bucketUri.getAuthority(), path2));
           }
         }
       }
@@ -1636,6 +1677,16 @@ public final class Utilities {
       }
       return Integer.parseInt(m.group(2));
     }
+    // Check to see if the bucketName matches the pattern "bucket_([0-9]+).*"
+    // This can happen in ACID cases when we have splits on delta files, where the filenames
+    // are of the form delta_x_y/bucket_a.
+    if (bucketName.startsWith(AcidUtils.BUCKET_PREFIX)) {
+      m = AcidUtils.BUCKET_DIGIT_PATTERN.matcher(bucketName);
+      if (m.find()) {
+          return Integer.parseInt(m.group());
+      }
+      // Note that legacy bucket digit pattern are being ignored here.
+    }
     return -1;
   }
 
@@ -1725,33 +1776,6 @@ public final class Utilities {
     return oneurl;
   }
 
-    /**
-     * get the jar files from specified directory or get jar files by several jar names sperated by comma
-     * @param path
-     * @return
-     */
-    public static Set<String> getJarFilesByPath(String path){
-        Set<String> result = new HashSet<String>();
-        if (path == null || path.isEmpty()) {
-            return result;
-        }
-
-        File paths = new File(path);
-        if (paths.exists() && paths.isDirectory()) {
-            // add all jar files under the reloadable auxiliary jar paths
-            Set<File> jarFiles = new HashSet<File>();
-            jarFiles.addAll(org.apache.commons.io.FileUtils.listFiles(
-                    paths, new String[]{"jar"}, true));
-            for (File f : jarFiles) {
-                result.add(f.getAbsolutePath());
-            }
-        } else {
-            String[] files = path.split(",");
-            Collections.addAll(result, files);
-        }
-        return result;
-    }
-
   private static boolean useExistingClassLoader(ClassLoader cl) {
     if (!(cl instanceof UDFClassLoader)) {
       // Cannot use the same classloader if it is not an instance of {@code UDFClassLoader}
@@ -1771,7 +1795,7 @@ public final class Utilities {
    * @param newPaths
    *          Array of classpath elements
    */
-  public static ClassLoader addToClassPath(ClassLoader cloader, String[] newPaths) throws Exception {
+  public static ClassLoader addToClassPath(ClassLoader cloader, String[] newPaths) {
     final URLClassLoader loader = (URLClassLoader) cloader;
     if (useExistingClassLoader(cloader)) {
       final UDFClassLoader udfClassLoader = (UDFClassLoader) loader;
@@ -1802,7 +1826,7 @@ public final class Utilities {
    * @param pathsToRemove
    *          Array of classpath elements
    */
-  public static void removeFromClassPath(String[] pathsToRemove) throws Exception {
+  public static void removeFromClassPath(String[] pathsToRemove) throws IOException {
     Thread curThread = Thread.currentThread();
     URLClassLoader loader = (URLClassLoader) curThread.getContextClassLoader();
     Set<URL> newPath = new HashSet<URL>(Arrays.asList(loader.getURLs()));
@@ -1875,13 +1899,9 @@ public final class Utilities {
   public static List<String> getColumnTypes(Properties props) {
     List<String> names = new ArrayList<String>();
     String colNames = props.getProperty(serdeConstants.LIST_COLUMN_TYPES);
-    String[] cols = colNames.trim().split(",");
-    if (cols != null) {
-      for (String col : cols) {
-        if (col != null && !col.trim().equals("")) {
-          names.add(col);
-        }
-      }
+    ArrayList<TypeInfo> cols = TypeInfoUtils.getTypeInfosFromTypeString(colNames);
+    for (TypeInfo col : cols) {
+      names.add(col.getTypeName());
     }
     return names;
   }
@@ -2058,14 +2078,14 @@ public final class Utilities {
 
     long[] summary = {0, 0, 0};
 
-    final List<String> pathNeedProcess = new ArrayList<String>();
+    final List<Path> pathNeedProcess = new ArrayList<>();
 
     // Since multiple threads could call this method concurrently, locking
     // this method will avoid number of threads out of control.
     synchronized (INPUT_SUMMARY_LOCK) {
       // For each input path, calculate the total size.
-      for (String path : work.getPathToAliases().keySet()) {
-        Path p = new Path(path);
+      for (Path path : work.getPathToAliases().keySet()) {
+        Path p = path;
 
         if (filter != null && !filter.accept(p)) {
           continue;
@@ -2101,9 +2121,9 @@ public final class Utilities {
       HiveInterruptCallback interrup = HiveInterruptUtils.add(new HiveInterruptCallback() {
         @Override
         public void interrupt() {
-          for (String path : pathNeedProcess) {
+          for (Path path : pathNeedProcess) {
             try {
-              new Path(path).getFileSystem(ctx.getConf()).close();
+              path.getFileSystem(ctx.getConf()).close();
             } catch (IOException ignore) {
                 LOG.debug("Failed to close filesystem", ignore);
             }
@@ -2116,9 +2136,9 @@ public final class Utilities {
       try {
         Configuration conf = ctx.getConf();
         JobConf jobConf = new JobConf(conf);
-        for (String path : pathNeedProcess) {
-          final Path p = new Path(path);
-          final String pathStr = path;
+        for (Path path : pathNeedProcess) {
+          final Path p = path;
+          final String pathStr = path.toString();
           // All threads share the same Configuration and JobConf based on the
           // assumption that they are thread safe if only read operations are
           // executed. It is not stated in Hadoop's javadoc, the sourcce codes
@@ -2128,9 +2148,8 @@ public final class Utilities {
           final Configuration myConf = conf;
           final JobConf myJobConf = jobConf;
           final Map<String, Operator<?>> aliasToWork = work.getAliasToWork();
-          final Map<String, ArrayList<String>> pathToAlias = work.getPathToAliases();
-          final PartitionDesc partDesc = work.getPathToPartitionInfo().get(
-              p.toString());
+          final Map<Path, ArrayList<String>> pathToAlias = work.getPathToAliases();
+          final PartitionDesc partDesc = work.getPathToPartitionInfo().get(p);
           Runnable r = new Runnable() {
             @Override
             public void run() {
@@ -2265,12 +2284,13 @@ public final class Utilities {
 
   public static boolean isEmptyPath(JobConf job, Path dirPath) throws Exception {
     FileSystem inpFs = dirPath.getFileSystem(job);
-
-    if (inpFs.exists(dirPath)) {
+    try {
       FileStatus[] fStats = inpFs.listStatus(dirPath, FileUtils.HIDDEN_FILES_PATH_FILTER);
       if (fStats.length > 0) {
         return false;
       }
+    } catch(FileNotFoundException fnf) {
+      return true;
     }
     return true;
   }
@@ -2938,7 +2958,6 @@ public final class Utilities {
    */
   public static List<Path> getInputPaths(JobConf job, MapWork work, Path hiveScratchDir,
       Context ctx, boolean skipDummy) throws Exception {
-    int sequenceNumber = 0;
 
     Set<Path> pathsProcessed = new HashSet<Path>();
     List<Path> pathsToAdd = new LinkedList<Path>();
@@ -2948,10 +2967,10 @@ public final class Utilities {
 
       // The alias may not have any path
       Path path = null;
-      for (String file : new LinkedList<String>(work.getPathToAliases().keySet())) {
+      for (Path file : new LinkedList<Path>(work.getPathToAliases().keySet())) {
         List<String> aliases = work.getPathToAliases().get(file);
         if (aliases.contains(alias)) {
-          path = new Path(file);
+          path = file;
 
           // Multiple aliases can point to the same path - it should be
           // processed only once
@@ -2965,7 +2984,7 @@ public final class Utilities {
           if (!skipDummy
               && isEmptyPath(job, path, ctx)) {
             path = createDummyFileForEmptyPartition(path, job, work,
-                 hiveScratchDir, alias, sequenceNumber++);
+                 hiveScratchDir);
 
           }
           pathsToAdd.add(path);
@@ -2981,8 +3000,7 @@ public final class Utilities {
       // If T is empty and T2 contains 100 rows, the user expects: 0, 100 (2
       // rows)
       if (path == null && !skipDummy) {
-        path = createDummyFileForEmptyTable(job, work, hiveScratchDir,
-            alias, sequenceNumber++);
+        path = createDummyFileForEmptyTable(job, work, hiveScratchDir, alias);
         pathsToAdd.add(path);
       }
     }
@@ -2992,11 +3010,11 @@ public final class Utilities {
   @SuppressWarnings({"rawtypes", "unchecked"})
   private static Path createEmptyFile(Path hiveScratchDir,
       HiveOutputFormat outFileFormat, JobConf job,
-      int sequenceNumber, Properties props, boolean dummyRow)
+      Properties props, boolean dummyRow)
           throws IOException, InstantiationException, IllegalAccessException {
 
     // create a dummy empty file in a new directory
-    String newDir = hiveScratchDir + Path.SEPARATOR + sequenceNumber;
+    String newDir = hiveScratchDir + Path.SEPARATOR + UUID.randomUUID().toString();
     Path newPath = new Path(newDir);
     FileSystem fs = newPath.getFileSystem(job);
     fs.mkdirs(newPath);
@@ -3022,13 +3040,13 @@ public final class Utilities {
 
   @SuppressWarnings("rawtypes")
   private static Path createDummyFileForEmptyPartition(Path path, JobConf job, MapWork work,
-      Path hiveScratchDir, String alias, int sequenceNumber)
+      Path hiveScratchDir)
           throws Exception {
 
     String strPath = path.toString();
 
     // The input file does not exist, replace it by a empty file
-    PartitionDesc partDesc = work.getPathToPartitionInfo().get(strPath);
+    PartitionDesc partDesc = work.getPathToPartitionInfo().get(path);
     if (partDesc.getTableDesc().isNonNative()) {
       // if this isn't a hive table we can't create an empty file for it.
       return path;
@@ -3041,7 +3059,7 @@ public final class Utilities {
     boolean oneRow = partDesc.getInputFileFormatClass() == OneNullRowInputFormat.class;
 
     Path newPath = createEmptyFile(hiveScratchDir, outFileFormat, job,
-        sequenceNumber, props, oneRow);
+        props, oneRow);
 
     if (LOG.isInfoEnabled()) {
       LOG.info("Changed input file " + strPath + " to empty file " + newPath);
@@ -3050,23 +3068,18 @@ public final class Utilities {
     // update the work
     String strNewPath = newPath.toString();
 
-    LinkedHashMap<String, ArrayList<String>> pathToAliases = work.getPathToAliases();
-    pathToAliases.put(strNewPath, pathToAliases.get(strPath));
-    pathToAliases.remove(strPath);
+    work.addPathToAlias(newPath, work.getPathToAliases().get(path));
+    work.removePathToAlias(path);
 
-    work.setPathToAliases(pathToAliases);
-
-    LinkedHashMap<String, PartitionDesc> pathToPartitionInfo = work.getPathToPartitionInfo();
-    pathToPartitionInfo.put(strNewPath, pathToPartitionInfo.get(strPath));
-    pathToPartitionInfo.remove(strPath);
-    work.setPathToPartitionInfo(pathToPartitionInfo);
+    work.removePathToPartitionInfo(path);
+    work.addPathToPartitionInfo(newPath, partDesc);
 
     return newPath;
   }
 
   @SuppressWarnings("rawtypes")
   private static Path createDummyFileForEmptyTable(JobConf job, MapWork work,
-      Path hiveScratchDir, String alias, int sequenceNumber)
+      Path hiveScratchDir, String alias)
           throws Exception {
 
     TableDesc tableDesc = work.getAliasToPartnInfo().get(alias).getTableDesc();
@@ -3079,7 +3092,7 @@ public final class Utilities {
     HiveOutputFormat outFileFormat = HiveFileFormatUtils.getHiveOutputFormat(job, tableDesc);
 
     Path newPath = createEmptyFile(hiveScratchDir, outFileFormat, job,
-        sequenceNumber, props, false);
+        props, false);
 
     if (LOG.isInfoEnabled()) {
       LOG.info("Changed input file for alias " + alias + " to " + newPath);
@@ -3087,17 +3100,15 @@ public final class Utilities {
 
     // update the work
 
-    LinkedHashMap<String, ArrayList<String>> pathToAliases = work.getPathToAliases();
+    LinkedHashMap<Path, ArrayList<String>> pathToAliases = work.getPathToAliases();
     ArrayList<String> newList = new ArrayList<String>();
     newList.add(alias);
-    pathToAliases.put(newPath.toUri().toString(), newList);
+    pathToAliases.put(newPath, newList);
 
     work.setPathToAliases(pathToAliases);
 
-    LinkedHashMap<String, PartitionDesc> pathToPartitionInfo = work.getPathToPartitionInfo();
     PartitionDesc pDesc = work.getAliasToPartnInfo().get(alias).clone();
-    pathToPartitionInfo.put(newPath.toUri().toString(), pDesc);
-    work.setPathToPartitionInfo(pathToPartitionInfo);
+    work.addPathToPartitionInfo(newPath, pDesc);
 
     return newPath;
   }
@@ -3155,7 +3166,7 @@ public final class Utilities {
   public static void createTmpDirs(Configuration conf, MapWork mWork)
       throws IOException {
 
-    Map<String, ArrayList<String>> pa = mWork.getPathToAliases();
+    Map<Path, ArrayList<String>> pa = mWork.getPathToAliases();
     if (pa != null) {
       // common case: 1 table scan per map-work
       // rare case: smb joins
@@ -3254,22 +3265,37 @@ public final class Utilities {
 
   /**
    * Returns true if a plan is both configured for vectorized execution
-   * and vectorization is allowed. The plan may be configured for vectorization
+   * and the node is vectorized and the Input File Format is marked VectorizedInputFileFormat.
+   *
+   * The plan may be configured for vectorization
    * but vectorization disallowed eg. for FetchOperator execution.
    */
-  public static boolean isVectorMode(Configuration conf) {
+  public static boolean getUseVectorizedInputFileFormat(Configuration conf) {
     if (conf.get(VECTOR_MODE) != null) {
       // this code path is necessary, because with HS2 and client
       // side split generation we end up not finding the map work.
       // This is because of thread local madness (tez split
       // generation is multi-threaded - HS2 plan cache uses thread
       // locals).
-      return conf.getBoolean(VECTOR_MODE, false);
+      return
+          conf.getBoolean(VECTOR_MODE, false) &&
+          conf.getBoolean(USE_VECTORIZED_INPUT_FILE_FORMAT, false);
     } else {
-      return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)
-        && Utilities.getPlanPath(conf) != null
-        && Utilities.getMapWork(conf).getVectorMode();
+      if (HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED) &&
+        Utilities.getPlanPath(conf) != null) {
+        MapWork mapWork = Utilities.getMapWork(conf);
+        return (mapWork.getVectorMode() && mapWork.getUseVectorizedInputFileFormat());
+      } else {
+        return false;
+      }
     }
+  }
+
+
+  public static boolean getUseVectorizedInputFileFormat(Configuration conf, MapWork mapWork) {
+    return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED) &&
+        mapWork.getVectorMode() &&
+        mapWork.getUseVectorizedInputFileFormat();
   }
 
   /**
@@ -3286,11 +3312,6 @@ public final class Utilities {
       }
     }
     return result;
-  }
-
-  public static boolean isVectorMode(Configuration conf, MapWork mapWork) {
-    return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)
-        && mapWork.getVectorMode();
   }
 
   public static void clearWorkMapForConf(Configuration conf) {
@@ -3603,5 +3624,92 @@ public final class Utilities {
     return rowObjectInspector;
   }
 
+  /**
+   * Check if LLAP IO supports the column type that is being read
+   * @param conf - configuration
+   * @return false for types not supported by vectorization, true otherwise
+   */
+  public static boolean checkLlapIOSupportedTypes(final Configuration conf) {
+    final String[] readColumnNames = ColumnProjectionUtils.getReadColumnNames(conf);
+    final String columnNames = conf.get(serdeConstants.LIST_COLUMNS);
+    final String columnTypes = conf.get(serdeConstants.LIST_COLUMN_TYPES);
+    if (columnNames == null || columnTypes == null || columnNames.isEmpty() ||
+        columnTypes.isEmpty()) {
+      LOG.warn("Column names ({}) or types ({}) is null. Skipping type checking for LLAP IO.",
+          columnNames, columnTypes);
+      return true;
+    }
+    final List<String> allColumnNames = Lists.newArrayList(columnNames.split(","));
+    final List<TypeInfo> typeInfos = TypeInfoUtils.getTypeInfosFromTypeString(columnTypes);
+    final List<String> allColumnTypes = TypeInfoUtils.getTypeStringsFromTypeInfo(typeInfos);
+    return checkLlapIOSupportedTypes(Lists.newArrayList(readColumnNames), allColumnNames,
+        allColumnTypes);
+  }
 
+  /**
+   * Check if LLAP IO supports the column type that is being read
+   * @param readColumnNames - columns that will be read from the table/partition
+   * @param allColumnNames - all columns
+   * @param allColumnTypes - all column types
+   * @return false for types not supported by vectorization, true otherwise
+   */
+  public static boolean checkLlapIOSupportedTypes(final List<String> readColumnNames,
+      final List<String> allColumnNames, final List<String> allColumnTypes) {
+    final String[] readColumnTypes = getReadColumnTypes(readColumnNames, allColumnNames,
+        allColumnTypes);
+
+    if (readColumnTypes != null) {
+      for (String readColumnType : readColumnTypes) {
+        if (readColumnType != null) {
+          if (!Vectorizer.validateDataType(readColumnType,
+              VectorExpressionDescriptor.Mode.PROJECTION)) {
+            LOG.warn("Unsupported column type encountered ({}). Disabling LLAP IO.",
+                readColumnType);
+            return false;
+          }
+        }
+      }
+    } else {
+      LOG.warn("readColumnTypes is null. Skipping type checking for LLAP IO. " +
+          "readColumnNames: {} allColumnNames: {} allColumnTypes: {} readColumnTypes: {}",
+          readColumnNames, allColumnNames, allColumnTypes, readColumnTypes);
+    }
+    return true;
+  }
+
+  private static String[] getReadColumnTypes(final List<String> readColumnNames,
+      final List<String> allColumnNames, final List<String> allColumnTypes) {
+    if (readColumnNames == null || allColumnNames == null || allColumnTypes == null ||
+        readColumnNames.isEmpty() || allColumnNames.isEmpty() || allColumnTypes.isEmpty()) {
+      return null;
+    }
+    Map<String, String> columnNameToType = new HashMap<>();
+    List<TypeInfo> types = TypeInfoUtils.typeInfosFromTypeNames(allColumnTypes);
+    if (allColumnNames.size() != types.size()) {
+      LOG.warn("Column names count does not match column types count." +
+              " ColumnNames: {} [{}] ColumnTypes: {} [{}]", allColumnNames, allColumnNames.size(),
+          allColumnTypes, types.size());
+      return null;
+    }
+
+    for (int i = 0; i < allColumnNames.size(); i++) {
+      columnNameToType.put(allColumnNames.get(i), types.get(i).toString());
+    }
+
+    String[] result = new String[readColumnNames.size()];
+    for (int i = 0; i < readColumnNames.size(); i++) {
+      result[i] = columnNameToType.get(readColumnNames.get(i));
+    }
+    return result;
+  }
+
+  public static String humanReadableByteCount(long bytes) {
+    int unit = 1000; // use binary units instead?
+    if (bytes < unit) {
+      return bytes + "B";
+    }
+    int exp = (int) (Math.log(bytes) / Math.log(unit));
+    String suffix = "KMGTPE".charAt(exp-1) + "";
+    return String.format("%.2f%sB", bytes / Math.pow(unit, exp), suffix);
+  }
 }

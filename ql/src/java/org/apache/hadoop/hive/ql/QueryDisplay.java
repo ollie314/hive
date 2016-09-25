@@ -65,7 +65,7 @@ public class QueryDisplay {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class TaskDisplay {
 
-    private Integer returnVal;  //if set, determines that task is complete.
+    private Integer returnValue;  //if set, determines that task is complete.
     private String errorMsg;
 
     private Long beginTime;
@@ -79,6 +79,8 @@ public class QueryDisplay {
     private String name;
     private boolean requireLock;
     private boolean retryIfFail;
+    private String statusMessage;
+
     // required for jackson
     public TaskDisplay() {
 
@@ -93,12 +95,12 @@ public class QueryDisplay {
     }
     @JsonIgnore
     public synchronized String getStatus() {
-      if (returnVal == null) {
+      if (returnValue == null) {
         return "Running";
-      } else if (returnVal == 0) {
+      } else if (returnValue == 0) {
         return "Success, ReturnVal 0";
       } else {
-        return "Failure, ReturnVal " + String.valueOf(returnVal);
+        return "Failure, ReturnVal " + String.valueOf(returnValue);
       }
     }
 
@@ -114,7 +116,7 @@ public class QueryDisplay {
     }
 
     public synchronized Integer getReturnValue() {
-      return returnVal;
+      return returnValue;
     }
 
     public synchronized String getErrorMsg() {
@@ -158,20 +160,33 @@ public class QueryDisplay {
       if (externalHandle == null && tTask.getExternalHandle() != null) {
         this.externalHandle = tTask.getExternalHandle();
       }
+      setStatusMessage(tTask.getStatusMessage());
       switch (taskState) {
         case RUNNING:
-          beginTime = System.currentTimeMillis();
+          if (beginTime == null) {
+            beginTime = System.currentTimeMillis();
+          }
           break;
         case FINISHED:
-          endTime = System.currentTimeMillis();
+          if (endTime == null) {
+            endTime = System.currentTimeMillis();
+          }
           break;
       }
+    }
+
+    public synchronized String getStatusMessage() {
+      return statusMessage;
+    }
+
+    public synchronized void setStatusMessage(String statusMessage) {
+      this.statusMessage = statusMessage;
     }
   }
   public synchronized void setTaskResult(String taskId, TaskResult result) {
     TaskDisplay taskDisplay = tasks.get(taskId);
     if (taskDisplay != null) {
-      taskDisplay.returnVal = result.getExitVal();
+      taskDisplay.returnValue = result.getExitVal();
       if (result.getTaskError() != null) {
         taskDisplay.errorMsg = result.getTaskError().toString();
       }

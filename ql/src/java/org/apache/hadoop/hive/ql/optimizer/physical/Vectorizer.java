@@ -34,11 +34,13 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.regex.Pattern;
 
+import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.exec.*;
 import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.exec.persistence.MapJoinKey;
@@ -93,11 +95,13 @@ import org.apache.hadoop.hive.ql.plan.BaseWork;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
+import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
 import org.apache.hadoop.hive.ql.plan.GroupByDesc;
 import org.apache.hadoop.hive.ql.plan.JoinDesc;
 import org.apache.hadoop.hive.ql.plan.MapJoinDesc;
 import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
+import org.apache.hadoop.hive.ql.plan.VectorGroupByDesc.ProcessingMode;
 import org.apache.hadoop.hive.ql.plan.VectorPartitionConversion;
 import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
@@ -113,6 +117,7 @@ import org.apache.hadoop.hive.ql.plan.VectorMapJoinDesc;
 import org.apache.hadoop.hive.ql.plan.VectorMapJoinDesc.HashTableImplementationType;
 import org.apache.hadoop.hive.ql.plan.VectorMapJoinDesc.HashTableKeyType;
 import org.apache.hadoop.hive.ql.plan.VectorMapJoinDesc.HashTableKind;
+import org.apache.hadoop.hive.ql.plan.VectorPartitionDesc.VectorDeserializeType;
 import org.apache.hadoop.hive.ql.plan.VectorReduceSinkDesc;
 import org.apache.hadoop.hive.ql.plan.VectorReduceSinkInfo;
 import org.apache.hadoop.hive.ql.plan.VectorPartitionDesc;
@@ -159,9 +164,14 @@ import org.apache.hadoop.hive.ql.udf.UDFWeekOfYear;
 import org.apache.hadoop.hive.ql.udf.UDFYear;
 import org.apache.hadoop.hive.ql.udf.generic.*;
 import org.apache.hadoop.hive.serde.serdeConstants;
+import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.Deserializer;
+import org.apache.hadoop.hive.serde2.NullStructSerDe;
+import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
@@ -169,25 +179,18 @@ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
+import org.apache.hadoop.mapred.SequenceFileInputFormat;
+import org.apache.hadoop.mapred.TextInputFormat;
 
-import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 
 public class Vectorizer implements PhysicalPlanResolver {
 
   protected static transient final Logger LOG = LoggerFactory.getLogger(Vectorizer.class);
 
-  Pattern supportedDataTypesPattern;
-  List<Task<? extends Serializable>> vectorizableTasks =
-      new ArrayList<Task<? extends Serializable>>();
-  Set<Class<?>> supportedGenericUDFs = new HashSet<Class<?>>();
+  static Pattern supportedDataTypesPattern;
 
-  Set<String> supportedAggregationUdfs = new HashSet<String>();
-
-  private HiveConf hiveConf;
-  private boolean isSpark;
-
-  public Vectorizer() {
-
+  static {
     StringBuilder patternBuilder = new StringBuilder();
     patternBuilder.append("int");
     patternBuilder.append("|smallint");
@@ -218,6 +221,25 @@ public class Vectorizer implements PhysicalPlanResolver {
     patternBuilder.append("|varchar.*");
 
     supportedDataTypesPattern = Pattern.compile(patternBuilder.toString());
+  }
+
+  List<Task<? extends Serializable>> vectorizableTasks =
+      new ArrayList<Task<? extends Serializable>>();
+  Set<Class<?>> supportedGenericUDFs = new HashSet<Class<?>>();
+
+  Set<String> supportedAggregationUdfs = new HashSet<String>();
+
+  private HiveConf hiveConf;
+
+  private boolean isSpark;
+
+  boolean useVectorizedInputFileFormat;
+  boolean useVectorDeserialize;
+  boolean useRowDeserialize;
+
+  boolean isSchemaEvolution;
+
+  public Vectorizer() {
 
     supportedGenericUDFs.add(GenericUDFOPPlus.class);
     supportedGenericUDFs.add(GenericUDFOPMinus.class);
@@ -338,23 +360,31 @@ public class Vectorizer implements PhysicalPlanResolver {
   }
 
   private class VectorTaskColumnInfo {
-    List<String> columnNames;
-    List<TypeInfo> typeInfos;
+    List<String> allColumnNames;
+    List<TypeInfo> allTypeInfos;
+    List<Integer> dataColumnNums;
+
     int partitionColumnCount;
+    boolean useVectorizedInputFileFormat;
 
     String[] scratchTypeNameArray;
 
     Set<Operator<? extends OperatorDesc>> nonVectorizedOps;
 
+    TableScanOperator tableScanOperator;
+
     VectorTaskColumnInfo() {
       partitionColumnCount = 0;
     }
 
-    public void setColumnNames(List<String> columnNames) {
-      this.columnNames = columnNames;
+    public void setAllColumnNames(List<String> allColumnNames) {
+      this.allColumnNames = allColumnNames;
     }
-    public void setTypeInfos(List<TypeInfo> typeInfos) {
-      this.typeInfos = typeInfos;
+    public void setAllTypeInfos(List<TypeInfo> allTypeInfos) {
+      this.allTypeInfos = allTypeInfos;
+    }
+    public void setDataColumnNums(List<Integer> dataColumnNums) {
+      this.dataColumnNums = dataColumnNums;
     }
     public void setPartitionColumnCount(int partitionColumnCount) {
       this.partitionColumnCount = partitionColumnCount;
@@ -362,9 +392,14 @@ public class Vectorizer implements PhysicalPlanResolver {
     public void setScratchTypeNameArray(String[] scratchTypeNameArray) {
       this.scratchTypeNameArray = scratchTypeNameArray;
     }
-
+    public void setUseVectorizedInputFileFormat(boolean useVectorizedInputFileFormat) {
+      this.useVectorizedInputFileFormat = useVectorizedInputFileFormat;
+    }
     public void setNonVectorizedOps(Set<Operator<? extends OperatorDesc>> nonVectorizedOps) {
       this.nonVectorizedOps = nonVectorizedOps;
+    }
+    public void setTableScanOperator(TableScanOperator tableScanOperator) {
+      this.tableScanOperator = tableScanOperator;
     }
 
     public Set<Operator<? extends OperatorDesc>> getNonVectorizedOps() {
@@ -373,16 +408,25 @@ public class Vectorizer implements PhysicalPlanResolver {
 
     public void transferToBaseWork(BaseWork baseWork) {
 
-      String[] columnNameArray = columnNames.toArray(new String[0]);
-      TypeInfo[] typeInfoArray = typeInfos.toArray(new TypeInfo[0]);
+      String[] allColumnNameArray = allColumnNames.toArray(new String[0]);
+      TypeInfo[] allTypeInfoArray = allTypeInfos.toArray(new TypeInfo[0]);
+      int[] dataColumnNumsArray;
+      if (dataColumnNums != null) {
+        dataColumnNumsArray = ArrayUtils.toPrimitive(dataColumnNums.toArray(new Integer[0]));
+      } else {
+        dataColumnNumsArray = null;
+      }
 
       VectorizedRowBatchCtx vectorizedRowBatchCtx =
           new VectorizedRowBatchCtx(
-            columnNameArray,
-            typeInfoArray,
+            allColumnNameArray,
+            allTypeInfoArray,
+            dataColumnNumsArray,
             partitionColumnCount,
             scratchTypeNameArray);
       baseWork.setVectorizedRowBatchCtx(vectorizedRowBatchCtx);
+
+      baseWork.setUseVectorizedInputFileFormat(useVectorizedInputFileFormat);
     }
   }
 
@@ -443,6 +487,10 @@ public class Vectorizer implements PhysicalPlanResolver {
           + ReduceSinkOperator.getOperatorName()), np);
     }
 
+    /*
+     * Determine if there is only one TableScanOperator.  Currently in Map vectorization, we do not
+     * try to vectorize multiple input trees.
+     */
     private ImmutablePair<String, TableScanOperator> verifyOnlyOneTableScanOperator(MapWork mapWork) {
 
       // Eliminate MR plans with more than one TableScanOperator.
@@ -476,8 +524,6 @@ public class Vectorizer implements PhysicalPlanResolver {
     private void getTableScanOperatorSchemaInfo(TableScanOperator tableScanOperator,
         List<String> logicalColumnNameList, List<TypeInfo> logicalTypeInfoList) {
 
-      TableScanDesc tableScanDesc = tableScanOperator.getConf();
-
       // Add all non-virtual columns to make a vectorization context for
       // the TableScan operator.
       RowSchema rowSchema = tableScanOperator.getSchema();
@@ -494,64 +540,198 @@ public class Vectorizer implements PhysicalPlanResolver {
       }
     }
 
-     private String getColumns(List<String> columnNames, int start, int length,
-        Character separator) {
-      return Joiner.on(separator).join(columnNames.subList(start, start + length));
+    private void determineDataColumnNums(TableScanOperator tableScanOperator,
+        List<String> allColumnNameList, int dataColumnCount, List<Integer> dataColumnNums) {
+
+      /*
+       * The TableScanOperator's needed columns are just the data columns.
+       */
+      Set<String> neededColumns = new HashSet<String>(tableScanOperator.getNeededColumns());
+
+      for (int dataColumnNum = 0; dataColumnNum < dataColumnCount; dataColumnNum++) {
+        String columnName = allColumnNameList.get(dataColumnNum);
+        if (neededColumns.contains(columnName)) {
+          dataColumnNums.add(dataColumnNum);
+        }
+      }
     }
 
-    private String getTypes(List<TypeInfo> typeInfos, int start, int length) {
-      return TypeInfoUtils.getTypesString(typeInfos.subList(start, start + length));
+    private String getHiveOptionsString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append(HiveConf.ConfVars.HIVE_VECTORIZATION_USE_VECTORIZED_INPUT_FILE_FORMAT.varname);
+      sb.append("=");
+      sb.append(useVectorizedInputFileFormat);
+      sb.append(", ");
+      sb.append(HiveConf.ConfVars.HIVE_VECTORIZATION_USE_VECTOR_DESERIALIZE.varname);
+      sb.append("=");
+      sb.append(useVectorDeserialize);
+      sb.append(", and ");
+      sb.append(HiveConf.ConfVars.HIVE_VECTORIZATION_USE_ROW_DESERIALIZE.varname);
+      sb.append("=");
+      sb.append(useRowDeserialize);
+      return sb.toString();
     }
 
-    private boolean verifyAndSetVectorPartDesc(PartitionDesc pd) {
+    /*
+     * There are 3 modes of reading for vectorization:
+     *
+     *   1) One for the Vectorized Input File Format which returns VectorizedRowBatch as the row.
+     *
+     *   2) One for using VectorDeserializeRow to deserialize each row into the VectorizedRowBatch.
+     *      Currently, these Input File Formats:
+     *        TEXTFILE
+     *        SEQUENCEFILE
+     *
+     *   3) And one using the regular partition deserializer to get the row object and assigning
+     *      the row object into the VectorizedRowBatch with VectorAssignRow.
+     *      This picks up Input File Format not supported by the other two.
+     */
+    private boolean verifyAndSetVectorPartDesc(PartitionDesc pd, boolean isAcidTable) {
+
+      String inputFileFormatClassName = pd.getInputFileFormatClassName();
 
       // Look for Pass-Thru case where InputFileFormat has VectorizedInputFormatInterface
       // and reads VectorizedRowBatch as a "row".
 
-      if (Utilities.isInputFileFormatVectorized(pd)) {
+      if (isAcidTable || useVectorizedInputFileFormat) {
 
-        pd.setVectorPartitionDesc(VectorPartitionDesc.createVectorizedInputFileFormat());
+        if (Utilities.isInputFileFormatVectorized(pd)) {
 
-        return true;
+          if (!useVectorizedInputFileFormat) {
+            LOG.info("ACID tables con only be vectorized for the input file format -- " +
+                "i.e. when Hive Configuration option " +
+                HiveConf.ConfVars.HIVE_VECTORIZATION_USE_VECTORIZED_INPUT_FILE_FORMAT.varname +
+                "=true");
+            return false;
+          }
+
+          pd.setVectorPartitionDesc(
+              VectorPartitionDesc.createVectorizedInputFileFormat(
+                  inputFileFormatClassName, Utilities.isInputFileFormatSelfDescribing(pd)));
+
+          return true;
+        }
+
+        // Today, ACID tables are only ORC and that format is vectorizable.  Verify this
+        // assumption.
+        Preconditions.checkState(!isAcidTable);
       }
 
-      LOG.info("Input format: " + pd.getInputFileFormatClassName()
-          + ", doesn't provide vectorized input");
+      if (!(isSchemaEvolution || isAcidTable) &&
+        (useVectorDeserialize || useRowDeserialize)) {
+        LOG.info("Input format: " + inputFileFormatClassName + " cannot be vectorized" +
+            " when both " + HiveConf.ConfVars.HIVE_SCHEMA_EVOLUTION.varname + "=false and " +
+            " ACID table is " + isAcidTable + " and " +
+            " given the Hive Configuration options " + getHiveOptionsString());
+        return false;
+      }
+
+      String deserializerClassName = pd.getDeserializerClassName();
+
+      // Look for InputFileFormat / Serde combinations we can deserialize more efficiently
+      // using VectorDeserializeRow and a deserialize class with the DeserializeRead interface.
+      //
+      // Do the "vectorized" row-by-row deserialization into a VectorizedRowBatch in the
+      // VectorMapOperator.
+
+      if (useVectorDeserialize) {
+
+        // Currently, we support LazySimple deserialization:
+        //
+        //    org.apache.hadoop.mapred.TextInputFormat
+        //    org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+        //
+        // AND
+        //
+        //    org.apache.hadoop.mapred.SequenceFileInputFormat
+        //    org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
+
+        if (inputFileFormatClassName.equals(TextInputFormat.class.getName()) &&
+            deserializerClassName.equals(LazySimpleSerDe.class.getName())) {
+
+          Properties properties = pd.getTableDesc().getProperties();
+          String lastColumnTakesRestString =
+              properties.getProperty(serdeConstants.SERIALIZATION_LAST_COLUMN_TAKES_REST);
+          boolean lastColumnTakesRest =
+              (lastColumnTakesRestString != null &&
+              lastColumnTakesRestString.equalsIgnoreCase("true"));
+          if (lastColumnTakesRest) {
+
+            // If row mode will not catch this, then inform.
+            if (useRowDeserialize) {
+              LOG.info("Input format: " + inputFileFormatClassName + " cannot be vectorized" +
+                  " when " + serdeConstants.SERIALIZATION_LAST_COLUMN_TAKES_REST + "is true");
+              return false;
+            }
+          } else {
+            pd.setVectorPartitionDesc(
+                VectorPartitionDesc.createVectorDeserialize(
+                    inputFileFormatClassName, VectorDeserializeType.LAZY_SIMPLE));
+
+            return true;
+          }
+        } else if (inputFileFormatClassName.equals(SequenceFileInputFormat.class.getName()) &&
+            deserializerClassName.equals(LazyBinarySerDe.class.getName())) {
+
+          pd.setVectorPartitionDesc(
+              VectorPartitionDesc.createVectorDeserialize(
+                  inputFileFormatClassName, VectorDeserializeType.LAZY_BINARY));
+
+          return true;
+        }
+      }
+
+      // Otherwise, if enabled, deserialize rows using regular Serde and add the object
+      // inspect-able Object[] row to a VectorizedRowBatch in the VectorMapOperator.
+
+      if (useRowDeserialize) {
+
+        pd.setVectorPartitionDesc(
+            VectorPartitionDesc.createRowDeserialize(
+                inputFileFormatClassName,
+                Utilities.isInputFileFormatSelfDescribing(pd),
+                deserializerClassName));
+
+        return true;
+
+      }
+
+      LOG.info("Input format: " + inputFileFormatClassName + " cannot be vectorized" +
+          " given the Hive Configuration options " + getHiveOptionsString());
 
       return false;
     }
 
     private boolean validateInputFormatAndSchemaEvolution(MapWork mapWork, String alias,
-        TableScanOperator tableScanOperator, VectorTaskColumnInfo vectorTaskColumnInfo) {
+        TableScanOperator tableScanOperator, VectorTaskColumnInfo vectorTaskColumnInfo)
+            throws SemanticException {
+
+      boolean isAcidTable = tableScanOperator.getConf().isAcidTable();
 
       // These names/types are the data columns plus partition columns.
       final List<String> allColumnNameList = new ArrayList<String>();
       final List<TypeInfo> allTypeInfoList = new ArrayList<TypeInfo>();
 
       getTableScanOperatorSchemaInfo(tableScanOperator, allColumnNameList, allTypeInfoList);
+
+      final List<Integer> dataColumnNums = new ArrayList<Integer>();
+
       final int allColumnCount = allColumnNameList.size();
 
-      // Validate input format and schema evolution capability.
-
-      // For the table, enter a null value in the multi-key map indicating no conversion necessary
-      // if the schema matches the table.
-
-      HashMap<ImmutablePair, boolean[]> conversionMap = new HashMap<ImmutablePair, boolean[]>();
-
+      /*
+       * Validate input formats of all the partitions can be vectorized.
+       */
       boolean isFirst = true;
       int dataColumnCount = 0;
       int partitionColumnCount = 0;
 
-      List<String> dataColumnList = null;
-      String dataColumnsString = "";
-      List<TypeInfo> dataTypeInfoList = null;
+      List<String> tableDataColumnList = null;
+      List<TypeInfo> tableDataTypeInfoList = null;
 
-      // Validate the input format
-      VectorPartitionConversion partitionConversion = new VectorPartitionConversion();
-      LinkedHashMap<String, ArrayList<String>> pathToAliases = mapWork.getPathToAliases();
-      LinkedHashMap<String, PartitionDesc> pathToPartitionInfo = mapWork.getPathToPartitionInfo();
-      for (Entry<String, ArrayList<String>> entry: pathToAliases.entrySet()) {
-        String path = entry.getKey();
+      LinkedHashMap<Path, ArrayList<String>> pathToAliases = mapWork.getPathToAliases();
+      LinkedHashMap<Path, PartitionDesc> pathToPartitionInfo = mapWork.getPathToPartitionInfo();
+      for (Entry<Path, ArrayList<String>> entry: pathToAliases.entrySet()) {
+        Path path = entry.getKey();
         List<String> aliases = entry.getValue();
         boolean isPresent = (aliases != null && aliases.indexOf(alias) != -1);
         if (!isPresent) {
@@ -563,31 +743,18 @@ public class Vectorizer implements PhysicalPlanResolver {
           // We seen this already.
           continue;
         }
-        if (!verifyAndSetVectorPartDesc(partDesc)) {
+        if (!verifyAndSetVectorPartDesc(partDesc, isAcidTable)) {
           return false;
         }
         VectorPartitionDesc vectorPartDesc = partDesc.getVectorPartitionDesc();
-        LOG.info("Vectorizer path: " + path + ", read type " +
-            vectorPartDesc.getVectorMapOperatorReadType().name() + ", aliases " + aliases);
-
-        Properties partProps = partDesc.getProperties();
-
-        String nextDataColumnsString =
-            partProps.getProperty(hive_metastoreConstants.META_TABLE_COLUMNS);
-        String[] nextDataColumns = nextDataColumnsString.split(",");
-
-        String nextDataTypesString =
-            partProps.getProperty(hive_metastoreConstants.META_TABLE_COLUMN_TYPES);
-
-        // We convert to an array of TypeInfo using a library routine since it parses the information
-        // and can handle use of different separators, etc.  We cannot use the raw type string
-        // for comparison in the map because of the different separators used.
-        List<TypeInfo> nextDataTypeInfoList =
-            TypeInfoUtils.getTypeInfosFromTypeString(nextDataTypesString);
+        if (LOG.isInfoEnabled()) {
+          LOG.info("Vectorizer path: " + path + ", " + vectorPartDesc.toString() +
+              ", aliases " + aliases);
+        }
 
         if (isFirst) {
 
-          // We establish with the first one whether the table is partitioned or not.
+          // Determine the data and partition columns using the first partition descriptor.
 
           LinkedHashMap<String, String> partSpec = partDesc.getPartSpec();
           if (partSpec != null && partSpec.size() > 0) {
@@ -598,85 +765,90 @@ public class Vectorizer implements PhysicalPlanResolver {
             dataColumnCount = allColumnCount;
           }
 
-          dataColumnList = allColumnNameList.subList(0, dataColumnCount);
-          dataColumnsString = getColumns(allColumnNameList, 0, dataColumnCount, ',');
-          dataTypeInfoList = allTypeInfoList.subList(0, dataColumnCount);
+          determineDataColumnNums(tableScanOperator, allColumnNameList, dataColumnCount,
+              dataColumnNums);
 
-          // Add the table (non-partitioned) columns and types into the map as not needing
-          // conversion (i.e. null).
-          conversionMap.put(
-              new ImmutablePair(dataColumnsString, dataTypeInfoList), null);
+          tableDataColumnList = allColumnNameList.subList(0, dataColumnCount);
+          tableDataTypeInfoList = allTypeInfoList.subList(0, dataColumnCount);
 
           isFirst = false;
         }
 
-        ImmutablePair columnNamesAndTypesCombination =
-            new ImmutablePair(nextDataColumnsString, nextDataTypeInfoList);
+        // We need to get the partition's column names from the partition serde.
+        // (e.g. Avro provides the table schema and ignores the partition schema..).
+        //
+        Deserializer deserializer;
+        StructObjectInspector partObjectInspector;
+        try {
+          deserializer = partDesc.getDeserializer(hiveConf);
+          partObjectInspector = (StructObjectInspector) deserializer.getObjectInspector();
+        } catch (Exception e) {
+          throw new SemanticException(e);
+        }
+        String nextDataColumnsString = ObjectInspectorUtils.getFieldNames(partObjectInspector);
+        String[] nextDataColumns = nextDataColumnsString.split(",");
+        List<String> nextDataColumnList = Arrays.asList(nextDataColumns);
 
-        boolean[] conversionFlags;
-        if (conversionMap.containsKey(columnNamesAndTypesCombination)) {
+        /*
+         * Validate the column names that are present are the same.  Missing columns will be
+         * implicitly defaulted to null.
+         */
+        if (nextDataColumnList.size() > tableDataColumnList.size()) {
+          LOG.info(
+              String.format(
+                  "Could not vectorize partition %s " +
+                  "(deserializer " + deserializer.getClass().getName() + ")" +
+                  "The partition column names %d is greater than the number of table columns %d",
+                  path, nextDataColumnList.size(), tableDataColumnList.size()));
+          return false;
+        }
+        if (!(deserializer instanceof NullStructSerDe)) {
 
-          conversionFlags = conversionMap.get(columnNamesAndTypesCombination);
-
-        } else {
-
-          List<String> nextDataColumnList = Arrays.asList(nextDataColumns);
-
-          // Validate the column names that are present are the same.  Missing columns will be
-          // implicitly defaulted to null.
-
-          if (nextDataColumnList.size() > dataColumnList.size()) {
-            LOG.info(
-                String.format("Could not vectorize partition %s.  The partition column names %d is greater than the number of table columns %d",
-                    path, nextDataColumnList.size(), dataColumnList.size()));
-            return false;
-          }
+          // (Don't insist NullStructSerDe produce correct column names).
           for (int i = 0; i < nextDataColumnList.size(); i++) {
             String nextColumnName = nextDataColumnList.get(i);
-            String tableColumnName = dataColumnList.get(i);
+            String tableColumnName = tableDataColumnList.get(i);
             if (!nextColumnName.equals(tableColumnName)) {
               LOG.info(
-                  String.format("Could not vectorize partition %s.  The partition column name %s is does not match table column name %s",
+                  String.format(
+                      "Could not vectorize partition %s " +
+                      "(deserializer " + deserializer.getClass().getName() + ")" +
+                      "The partition column name %s is does not match table column name %s",
                       path, nextColumnName, tableColumnName));
               return false;
             }
           }
-
-          // The table column types might have been changed with ALTER.  There are restrictions
-          // here for vectorization.
-
-          // Some readers / deserializers take responsibility for conversion themselves.
-
-          // If we need to check for conversion, the conversion object may come back null
-          // indicating from a vectorization point of view the conversion is implicit.  That is,
-          // all implicit integer upgrades.
-
-          if (vectorPartDesc.getNeedsDataTypeConversionCheck() &&
-             !nextDataTypeInfoList.equals(dataTypeInfoList)) {
-
-             // The results will be in 2 members: validConversion and conversionFlags
-            partitionConversion.validateConversion(nextDataTypeInfoList, dataTypeInfoList);
-             if (!partitionConversion.getValidConversion()) {
-               return false;
-             }
-             conversionFlags = partitionConversion.getResultConversionFlags();
-           } else {
-            conversionFlags = null;
-          }
-
-          // We enter this in our map so we don't have to check again for subsequent partitions.
-
-          conversionMap.put(columnNamesAndTypesCombination, conversionFlags);
         }
 
-        vectorPartDesc.setConversionFlags(conversionFlags);
+        List<TypeInfo> nextDataTypeInfoList;
+        if (vectorPartDesc.getIsInputFileFormatSelfDescribing()) {
 
-        vectorPartDesc.setTypeInfos(nextDataTypeInfoList);
+          /*
+           * Self-Describing Input Format will convert its data to the table schema.
+           */
+          nextDataTypeInfoList = tableDataTypeInfoList;
+
+        } else {
+          String nextDataTypesString = ObjectInspectorUtils.getFieldTypes(partObjectInspector);
+
+          // We convert to an array of TypeInfo using a library routine since it parses the information
+          // and can handle use of different separators, etc.  We cannot use the raw type string
+          // for comparison in the map because of the different separators used.
+          nextDataTypeInfoList =
+              TypeInfoUtils.getTypeInfosFromTypeString(nextDataTypesString);
+        }
+
+        vectorPartDesc.setDataTypeInfos(nextDataTypeInfoList);
       }
 
-      vectorTaskColumnInfo.setColumnNames(allColumnNameList);
-      vectorTaskColumnInfo.setTypeInfos(allTypeInfoList);
+      vectorTaskColumnInfo.setAllColumnNames(allColumnNameList);
+      vectorTaskColumnInfo.setAllTypeInfos(allTypeInfoList);
+      vectorTaskColumnInfo.setDataColumnNums(dataColumnNums);
       vectorTaskColumnInfo.setPartitionColumnCount(partitionColumnCount);
+      vectorTaskColumnInfo.setUseVectorizedInputFileFormat(useVectorizedInputFileFormat);
+
+      // Helps to keep this for debugging.
+      vectorTaskColumnInfo.setTableScanOperator(tableScanOperator);
 
       return true;
     }
@@ -798,8 +970,8 @@ public class Vectorizer implements PhysicalPlanResolver {
         throw new SemanticException(e);
       }
 
-      vectorTaskColumnInfo.setColumnNames(reduceColumnNames);
-      vectorTaskColumnInfo.setTypeInfos(reduceTypeInfos);
+      vectorTaskColumnInfo.setAllColumnNames(reduceColumnNames);
+      vectorTaskColumnInfo.setAllTypeInfos(reduceTypeInfos);
 
       return true;
     }
@@ -1045,7 +1217,7 @@ public class Vectorizer implements PhysicalPlanResolver {
   class MapWorkVectorizationNodeProcessor extends VectorizationNodeProcessor {
 
     private final MapWork mWork;
-    private VectorTaskColumnInfo vectorTaskColumnInfo;
+    private final VectorTaskColumnInfo vectorTaskColumnInfo;
     private final boolean isTez;
 
     public MapWorkVectorizationNodeProcessor(MapWork mWork, boolean isTez,
@@ -1103,9 +1275,9 @@ public class Vectorizer implements PhysicalPlanResolver {
 
   class ReduceWorkVectorizationNodeProcessor extends VectorizationNodeProcessor {
 
-    private VectorTaskColumnInfo vectorTaskColumnInfo;
+    private final VectorTaskColumnInfo vectorTaskColumnInfo;
 
-    private boolean isTez;
+    private final boolean isTez;
 
     private Operator<? extends OperatorDesc> rootVectorOp;
 
@@ -1136,9 +1308,9 @@ public class Vectorizer implements PhysicalPlanResolver {
       boolean saveRootVectorOp = false;
 
       if (op.getParentOperators().size() == 0) {
-        LOG.info("ReduceWorkVectorizationNodeProcessor process reduceColumnNames " + vectorTaskColumnInfo.columnNames.toString());
+        LOG.info("ReduceWorkVectorizationNodeProcessor process reduceColumnNames " + vectorTaskColumnInfo.allColumnNames.toString());
 
-        vContext = new VectorizationContext("__Reduce_Shuffle__", vectorTaskColumnInfo.columnNames);
+        vContext = new VectorizationContext("__Reduce_Shuffle__", vectorTaskColumnInfo.allColumnNames, hiveConf);
         taskVectorizationContext = vContext;
 
         saveRootVectorOp = true;
@@ -1177,8 +1349,8 @@ public class Vectorizer implements PhysicalPlanResolver {
   }
 
   private static class ValidatorVectorizationContext extends VectorizationContext {
-    private ValidatorVectorizationContext() {
-      super("No Name");
+    private ValidatorVectorizationContext(HiveConf hiveConf) {
+      super("No Name", hiveConf);
     }
 
     @Override
@@ -1203,7 +1375,23 @@ public class Vectorizer implements PhysicalPlanResolver {
       LOG.info("Vectorization is disabled");
       return physicalContext;
     }
+
     isSpark = (HiveConf.getVar(hiveConf, HiveConf.ConfVars.HIVE_EXECUTION_ENGINE).equals("spark"));
+
+    useVectorizedInputFileFormat =
+        HiveConf.getBoolVar(hiveConf,
+            HiveConf.ConfVars.HIVE_VECTORIZATION_USE_VECTORIZED_INPUT_FILE_FORMAT);
+    useVectorDeserialize =
+        HiveConf.getBoolVar(hiveConf,
+            HiveConf.ConfVars.HIVE_VECTORIZATION_USE_VECTOR_DESERIALIZE);
+    useRowDeserialize =
+        HiveConf.getBoolVar(hiveConf,
+            HiveConf.ConfVars.HIVE_VECTORIZATION_USE_ROW_DESERIALIZE);
+
+    isSchemaEvolution =
+        HiveConf.getBoolVar(hiveConf,
+            HiveConf.ConfVars.HIVE_SCHEMA_EVOLUTION);
+
     // create dispatcher and graph walker
     Dispatcher disp = new VectorizationDispatcher(physicalContext);
     TaskGraphWalker ogw = new TaskGraphWalker(disp);
@@ -1422,76 +1610,131 @@ public class Vectorizer implements PhysicalPlanResolver {
       LOG.info("Pruning grouping set id not supported in vector mode");
       return false;
     }
+    if (desc.getMode() != GroupByDesc.Mode.HASH && desc.isDistinct()) {
+      LOG.info("DISTINCT not supported in vector mode");
+      return false;
+    }
     boolean ret = validateExprNodeDesc(desc.getKeys());
     if (!ret) {
-      LOG.info("Cannot vectorize groupby key expression");
+      LOG.info("Cannot vectorize groupby key expression " + desc.getKeys().toString());
       return false;
     }
 
-    if (!isReduce) {
+    /**
+     *
+     * GROUP BY DEFINITIONS:
+     *
+     * GroupByDesc.Mode enumeration:
+     *
+     *    The different modes of a GROUP BY operator.
+     *
+     *    These descriptions are hopefully less cryptic than the comments for GroupByDesc.Mode.
+     *
+     *        COMPLETE       Aggregates original rows into full aggregation row(s).
+     *
+     *                       If the key length is 0, this is also called Global aggregation and
+     *                       1 output row is produced.
+     *
+     *                       When the key length is > 0, the original rows come in ALREADY GROUPED.
+     *
+     *                       An example for key length > 0 is a GROUP BY being applied to the
+     *                       ALREADY GROUPED rows coming from an upstream JOIN operator.  Or,
+     *                       ALREADY GROUPED rows coming from upstream MERGEPARTIAL GROUP BY
+     *                       operator.
+     *
+     *        PARTIAL1       The first of 2 (or more) phases that aggregates ALREADY GROUPED
+     *                       original rows into partial aggregations.
+     *
+     *                       Subsequent phases PARTIAL2 (optional) and MERGEPARTIAL will merge
+     *                       the partial aggregations and output full aggregations.
+     *
+     *        PARTIAL2       Accept ALREADY GROUPED partial aggregations and merge them into another
+     *                       partial aggregation.  Output the merged partial aggregations.
+     *
+     *                       (Haven't seen this one used)
+     *
+     *        PARTIALS       (Behaves for non-distinct the same as PARTIAL2; and behaves for
+     *                       distinct the same as PARTIAL1.)
+     *
+     *        FINAL          Accept ALREADY GROUPED original rows and aggregate them into
+     *                       full aggregations.
+     *
+     *                       Example is a GROUP BY being applied to rows from a sorted table, where
+     *                       the group key is the table sort key (or a prefix).
+     *
+     *        HASH           Accept UNORDERED original rows and aggregate them into a memory table.
+     *                       Output the partial aggregations on closeOp (or low memory).
+     *
+     *                       Similar to PARTIAL1 except original rows are UNORDERED.
+     *
+     *                       Commonly used in both Mapper and Reducer nodes.  Always followed by
+     *                       a Reducer with MERGEPARTIAL GROUP BY.
+     *
+     *        MERGEPARTIAL   Always first operator of a Reducer.  Data is grouped by reduce-shuffle.
+     *
+     *                       (Behaves for non-distinct aggregations the same as FINAL; and behaves
+     *                       for distinct aggregations the same as COMPLETE.)
+     *
+     *                       The output is full aggregation(s).
+     *
+     *                       Used in Reducers after a stage with a HASH GROUP BY operator.
+     *
+     *
+     *  VectorGroupByDesc.ProcessingMode for VectorGroupByOperator:
+     *
+     *     GLOBAL         No key.  All rows --> 1 full aggregation on end of input
+     *
+     *     HASH           Rows aggregated in to hash table on group key -->
+     *                        1 partial aggregation per key (normally, unless there is spilling)
+     *
+     *     MERGE_PARTIAL  As first operator in a REDUCER, partial aggregations come grouped from
+     *                    reduce-shuffle -->
+     *                        aggregate the partial aggregations and emit full aggregation on
+     *                        endGroup / closeOp
+     *
+     *     STREAMING      Rows come from PARENT operator ALREADY GROUPED -->
+     *                        aggregate the rows and emit full aggregation on key change / closeOp
+     *
+     *     NOTE: Hash can spill partial result rows prematurely if it runs low on memory.
+     *     NOTE: Streaming has to compare keys where MergePartial gets an endGroup call.
+     *
+     *
+     *  DECIDER: Which VectorGroupByDesc.ProcessingMode for VectorGroupByOperator?
+     *
+     *     Decides using GroupByDesc.Mode and whether there are keys with the
+     *     VectorGroupByDesc.groupByDescModeToVectorProcessingMode method.
+     *
+     *         Mode.COMPLETE      --> (numKeys == 0 ? ProcessingMode.GLOBAL : ProcessingMode.STREAMING)
+     *
+     *         Mode.HASH          --> ProcessingMode.HASH
+     *
+     *         Mode.MERGEPARTIAL  --> (numKeys == 0 ? ProcessingMode.GLOBAL : ProcessingMode.MERGE_PARTIAL)
+     *
+     *         Mode.PARTIAL1,
+     *         Mode.PARTIAL2,
+     *         Mode.PARTIALS,
+     *         Mode.FINAL        --> ProcessingMode.STREAMING
+     *
+     */
+    boolean hasKeys = (desc.getKeys().size() > 0);
 
-      // MapWork
+    ProcessingMode processingMode =
+        VectorGroupByDesc.groupByDescModeToVectorProcessingMode(desc.getMode(), hasKeys);
 
-      ret = validateHashAggregationDesc(desc.getAggregators());
-      if (!ret) {
-        return false;
-      }
-    } else {
-
-      // ReduceWork
-
-      boolean isComplete = desc.getMode() == GroupByDesc.Mode.COMPLETE;
-      if (desc.getMode() != GroupByDesc.Mode.HASH) {
-
-        // Reduce Merge-Partial GROUP BY.
-
-        // A merge-partial GROUP BY is fed by grouping by keys from reduce-shuffle.  It is the
-        // first (or root) operator for its reduce task.
-        // TODO: Technically, we should also handle FINAL, PARTIAL1, PARTIAL2 and PARTIALS
-        //       that are not hash or complete, but aren't merge-partial, somehow.
-
-        if (desc.isDistinct()) {
-          LOG.info("Vectorized Reduce MergePartial GROUP BY does not support DISTINCT");
-          return false;
-        }
-
-        boolean hasKeys = (desc.getKeys().size() > 0);
-
-        // Do we support merge-partial aggregation AND the output is primitive?
-        ret = validateReduceMergePartialAggregationDesc(desc.getAggregators(), hasKeys);
-        if (!ret) {
-          return false;
-        }
-
-        if (hasKeys) {
-          if (op.getParentOperators().size() > 0 && !isComplete) {
-            LOG.info("Vectorized Reduce MergePartial GROUP BY keys can only handle a key group when it is fed by reduce-shuffle");
-            return false;
-          }
-
-          LOG.info("Vectorized Reduce MergePartial GROUP BY will process key groups");
-
-          // Primitive output validation above means we can output VectorizedRowBatch to the
-          // children operators.
-          vectorDesc.setVectorOutput(true);
-        } else {
-          LOG.info("Vectorized Reduce MergePartial GROUP BY will do global aggregation");
-        }
-        if (!isComplete) {
-          vectorDesc.setIsReduceMergePartial(true);
-        } else {
-          vectorDesc.setIsReduceStreaming(true);
-        }
-      } else {
-
-        // Reduce Hash GROUP BY or global aggregation.
-
-        ret = validateHashAggregationDesc(desc.getAggregators());
-        if (!ret) {
-          return false;
-        }
-      }
+    Pair<Boolean,Boolean> retPair =
+        validateAggregationDescs(desc.getAggregators(), processingMode, hasKeys);
+    if (!retPair.left) {
+      return false;
     }
+
+    // If all the aggregation outputs are primitive, we can output VectorizedRowBatch.
+    // Otherwise, we the rest of the operator tree will be row mode.
+    vectorDesc.setVectorOutput(retPair.right);
+
+    vectorDesc.setProcessingMode(processingMode);
+
+    LOG.info("Vector GROUP BY operator will use processing mode " + processingMode.name() +
+        ", isVectorOutput " + vectorDesc.isVectorOutput());
 
     return true;
   }
@@ -1515,23 +1758,19 @@ public class Vectorizer implements PhysicalPlanResolver {
     return true;
   }
 
-
-  private boolean validateHashAggregationDesc(List<AggregationDesc> descs) {
-    return validateAggregationDesc(descs, /* isReduceMergePartial */ false, false);
-  }
-
-  private boolean validateReduceMergePartialAggregationDesc(List<AggregationDesc> descs, boolean hasKeys) {
-    return validateAggregationDesc(descs, /* isReduceMergePartial */ true, hasKeys);
-  }
-
-  private boolean validateAggregationDesc(List<AggregationDesc> descs, boolean isReduceMergePartial, boolean hasKeys) {
+  private Pair<Boolean,Boolean> validateAggregationDescs(List<AggregationDesc> descs,
+      ProcessingMode processingMode, boolean hasKeys) {
+    boolean outputIsPrimitive = true;
     for (AggregationDesc d : descs) {
-      boolean ret = validateAggregationDesc(d, isReduceMergePartial, hasKeys);
-      if (!ret) {
-        return false;
+      Pair<Boolean,Boolean>  retPair = validateAggregationDesc(d, processingMode, hasKeys);
+      if (!retPair.left) {
+        return retPair;
+      }
+      if (!retPair.right) {
+        outputIsPrimitive = false;
       }
     }
-    return true;
+    return new Pair<Boolean, Boolean>(true, outputIsPrimitive);
   }
 
   private boolean validateExprNodeDescRecursive(ExprNodeDesc desc, VectorExpressionDescriptor.Mode mode) {
@@ -1563,14 +1802,14 @@ public class Vectorizer implements PhysicalPlanResolver {
     if (desc.getChildren() != null) {
       if (isInExpression
           && desc.getChildren().get(0).getTypeInfo().getCategory() == Category.STRUCT) {
-        // Don't restrict child expressions for projection. 
+        // Don't restrict child expressions for projection.
         // Always use loose FILTER mode.
         if (!validateStructInExpression(desc, VectorExpressionDescriptor.Mode.FILTER)) {
           return false;
         }
       } else {
         for (ExprNodeDesc d : desc.getChildren()) {
-          // Don't restrict child expressions for projection. 
+          // Don't restrict child expressions for projection.
           // Always use loose FILTER mode.
           if (!validateExprNodeDescRecursive(d, VectorExpressionDescriptor.Mode.FILTER)) {
             return false;
@@ -1629,17 +1868,23 @@ public class Vectorizer implements PhysicalPlanResolver {
       return false;
     }
     try {
-      VectorizationContext vc = new ValidatorVectorizationContext();
+      VectorizationContext vc = new ValidatorVectorizationContext(hiveConf);
       if (vc.getVectorExpression(desc, mode) == null) {
         // TODO: this cannot happen - VectorizationContext throws in such cases.
         LOG.info("getVectorExpression returned null");
         return false;
       }
     } catch (Exception e) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Failed to vectorize", e);
+      if (e instanceof HiveException) {
+        LOG.info(e.getMessage());
+      } else {
+        if (LOG.isDebugEnabled()) {
+          // Show stack trace.
+          LOG.debug("Failed to vectorize", e);
+        } else {
+          LOG.info("Failed to vectorize", e.getMessage());
+        }
       }
-
       return false;
     }
     return true;
@@ -1663,41 +1908,48 @@ public class Vectorizer implements PhysicalPlanResolver {
     return (outputObjInspector.getCategory() == ObjectInspector.Category.PRIMITIVE);
   }
 
-  private boolean validateAggregationDesc(AggregationDesc aggDesc, boolean isReduceMergePartial,
-          boolean hasKeys) {
+  private Pair<Boolean,Boolean> validateAggregationDesc(AggregationDesc aggDesc, ProcessingMode processingMode,
+      boolean hasKeys) {
 
     String udfName = aggDesc.getGenericUDAFName().toLowerCase();
     if (!supportedAggregationUdfs.contains(udfName)) {
       LOG.info("Cannot vectorize groupby aggregate expression: UDF " + udfName + " not supported");
-      return false;
+      return new Pair<Boolean,Boolean>(false, false);
     }
     if (aggDesc.getParameters() != null && !validateExprNodeDesc(aggDesc.getParameters())) {
       LOG.info("Cannot vectorize groupby aggregate expression: UDF parameters not supported");
-      return false;
+      return new Pair<Boolean,Boolean>(false, false);
     }
 
     // See if we can vectorize the aggregation.
-    VectorizationContext vc = new ValidatorVectorizationContext();
+    VectorizationContext vc = new ValidatorVectorizationContext(hiveConf);
     VectorAggregateExpression vectorAggrExpr;
     try {
-        vectorAggrExpr = vc.getAggregatorExpression(aggDesc, isReduceMergePartial);
+        vectorAggrExpr = vc.getAggregatorExpression(aggDesc);
     } catch (Exception e) {
       // We should have already attempted to vectorize in validateAggregationDesc.
       if (LOG.isDebugEnabled()) {
         LOG.debug("Vectorization of aggreation should have succeeded ", e);
       }
-      return false;
+      return new Pair<Boolean,Boolean>(false, false);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Aggregation " + aggDesc.getExprString() + " --> " +
+          " vector expression " + vectorAggrExpr.toString());
     }
 
-    if (isReduceMergePartial && hasKeys && !validateAggregationIsPrimitive(vectorAggrExpr)) {
+    boolean outputIsPrimitive = validateAggregationIsPrimitive(vectorAggrExpr);
+    if (processingMode == ProcessingMode.MERGE_PARTIAL &&
+        hasKeys &&
+        !outputIsPrimitive) {
       LOG.info("Vectorized Reduce MergePartial GROUP BY keys can only handle aggregate outputs that are primitive types");
-      return false;
+      return new Pair<Boolean,Boolean>(false, false);
     }
 
-    return true;
+    return new Pair<Boolean,Boolean>(true, outputIsPrimitive);
   }
 
-  private boolean validateDataType(String type, VectorExpressionDescriptor.Mode mode) {
+  public static boolean validateDataType(String type, VectorExpressionDescriptor.Mode mode) {
     type = type.toLowerCase();
     boolean result = supportedDataTypesPattern.matcher(type).matches();
     if (result && mode == VectorExpressionDescriptor.Mode.PROJECTION && type.equals("void")) {
@@ -1709,7 +1961,8 @@ public class Vectorizer implements PhysicalPlanResolver {
   private VectorizationContext getVectorizationContext(String contextName,
       VectorTaskColumnInfo vectorTaskColumnInfo) {
 
-    VectorizationContext vContext = new VectorizationContext(contextName, vectorTaskColumnInfo.columnNames);
+    VectorizationContext vContext =
+        new VectorizationContext(contextName, vectorTaskColumnInfo.allColumnNames, hiveConf);
 
     return vContext;
   }
@@ -2101,7 +2354,7 @@ public class Vectorizer implements PhysicalPlanResolver {
     if (keySerializerClass != org.apache.hadoop.hive.serde2.binarysortable.BinarySortableSerDe.class) {
       return false;
     }
- 
+
     TableDesc valueTableDesc = desc.getValueSerializeInfo();
     Class<? extends Deserializer> valueDeserializerClass = valueTableDesc.getDeserializerClass();
     if (valueDeserializerClass != org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe.class) {
@@ -2160,7 +2413,7 @@ public class Vectorizer implements PhysicalPlanResolver {
     } else {
       reduceSinkValueExpressions = reduceSinkValueExpressionsList.toArray(new VectorExpression[0]);
     }
- 
+
     vectorReduceSinkInfo.setReduceSinkKeyColumnMap(reduceSinkKeyColumnMap);
     vectorReduceSinkInfo.setReduceSinkKeyTypeInfos(reduceSinkKeyTypeInfos);
     vectorReduceSinkInfo.setReduceSinkKeyColumnVectorTypes(reduceSinkKeyColumnVectorTypes);
@@ -2215,7 +2468,7 @@ public class Vectorizer implements PhysicalPlanResolver {
           }
         }
         break;
-      
+
       case REDUCESINK:
         {
           VectorReduceSinkInfo vectorReduceSinkInfo = new VectorReduceSinkInfo();
@@ -2274,12 +2527,12 @@ public class Vectorizer implements PhysicalPlanResolver {
 
     VectorizedRowBatchCtx vectorizedRowBatchCtx = work.getVectorizedRowBatchCtx();
 
-    String[] columnNames = vectorizedRowBatchCtx.getRowColumnNames();
+    String[] allColumnNames = vectorizedRowBatchCtx.getRowColumnNames();
     Object columnTypeInfos = vectorizedRowBatchCtx.getRowColumnTypeInfos();
     int partitionColumnCount = vectorizedRowBatchCtx.getPartitionColumnCount();
     String[] scratchColumnTypeNames =vectorizedRowBatchCtx.getScratchColumnTypeNames();
 
-    LOG.debug("debugDisplayAllMaps columnNames " + Arrays.toString(columnNames));
+    LOG.debug("debugDisplayAllMaps allColumnNames " + Arrays.toString(allColumnNames));
     LOG.debug("debugDisplayAllMaps columnTypeInfos " + Arrays.deepToString((Object[]) columnTypeInfos));
     LOG.debug("debugDisplayAllMaps partitionColumnCount " + partitionColumnCount);
     LOG.debug("debugDisplayAllMaps scratchColumnTypeNames " + Arrays.toString(scratchColumnTypeNames));

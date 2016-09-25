@@ -32,8 +32,11 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TimeZone;
@@ -47,7 +50,9 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FSInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -56,6 +61,7 @@ import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.exec.SerializationUtilities;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.ExecMapper;
+import org.apache.hadoop.hive.ql.exec.tez.ColumnarSplitSizeEstimator;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DoubleColumnVector;
@@ -80,6 +86,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.MapWork;
 import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
+import org.apache.hadoop.hive.ql.plan.VectorPartitionDesc;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.SerDe;
@@ -513,7 +520,32 @@ public class TestInputOutputFormat {
               conf, n);
           OrcInputFormat.FileGenerator gen = new OrcInputFormat.FileGenerator(
               context, fs, new MockPath(fs, "mock:/a/b"), false, null);
-          final SplitStrategy splitStrategy = createSplitStrategy(context, gen);
+          List<SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+          assertEquals(1, splitStrategies.size());
+          final SplitStrategy splitStrategy = splitStrategies.get(0);
+          assertTrue(
+              String.format(
+                  "Split strategy for %d files x %d size for %d splits", c, s,
+                  n),
+              splitStrategy.getClass().getSimpleName()
+                  .equals(strategyResults[k++]));
+        }
+      }
+    }
+
+    k = 0;
+    conf.set("hive.orc.cache.stripe.details.size", "-1");
+    for (int c : counts) {
+      for (int s : sizes) {
+        final FileSystem fs = generateMockFiles(c, s);
+        for (int n : numSplits) {
+          final OrcInputFormat.Context context = new OrcInputFormat.Context(
+              conf, n);
+          OrcInputFormat.FileGenerator gen = new OrcInputFormat.FileGenerator(
+              context, fs, new MockPath(fs, "mock:/a/b"), false, null);
+          List<SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+          assertEquals(1, splitStrategies.size());
+          final SplitStrategy splitStrategy = splitStrategies.get(0);
           assertTrue(
               String.format(
                   "Split strategy for %d files x %d size for %d splits", c, s,
@@ -537,8 +569,9 @@ public class TestInputOutputFormat {
     OrcInputFormat.FileGenerator gen =
       new OrcInputFormat.FileGenerator(context, fs,
           new MockPath(fs, "mock:/a/b"), false, null);
-    OrcInputFormat.SplitStrategy splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
+    List<OrcInputFormat.SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
 
     conf.set("mapreduce.input.fileinputformat.split.maxsize", "500");
     context = new OrcInputFormat.Context(conf);
@@ -550,8 +583,152 @@ public class TestInputOutputFormat {
         new MockFile("mock:/a/b/part-04", 1000, new byte[1000]));
     gen = new OrcInputFormat.FileGenerator(context, fs,
             new MockPath(fs, "mock:/a/b"), false, null);
-    splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.ETLSplitStrategy);
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ETLSplitStrategy);
+  }
+
+  @Test
+  public void testACIDSplitStrategy() throws Exception {
+    conf.set("bucket_count", "2");
+    OrcInputFormat.Context context = new OrcInputFormat.Context(conf);
+    MockFileSystem fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/delta_000_001/part-00", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_000_001/part-01", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_001_002/part-02", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_001_002/part-03", 1000, new byte[1], new MockBlock("host1")));
+    OrcInputFormat.FileGenerator gen =
+        new OrcInputFormat.FileGenerator(context, fs,
+            new MockPath(fs, "mock:/a"), false, null);
+    List<OrcInputFormat.SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    List<OrcSplit> splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    ColumnarSplitSizeEstimator splitSizeEstimator = new ColumnarSplitSizeEstimator();
+    for (OrcSplit split: splits) {
+      assertEquals(Integer.MAX_VALUE, splitSizeEstimator.getEstimatedSize(split));
+    }
+    assertEquals(2, splits.size());
+  }
+
+  @Test
+  public void testACIDSplitStrategyForSplitUpdate() throws Exception {
+    conf.set("bucket_count", "2");
+    conf.set(hive_metastoreConstants.TABLE_IS_TRANSACTIONAL, "true");
+    conf.set(hive_metastoreConstants.TABLE_TRANSACTIONAL_PROPERTIES, "default");
+    OrcInputFormat.Context context = new OrcInputFormat.Context(conf);
+
+    // Case 1: Test with just originals => Single split strategy with two splits.
+    MockFileSystem fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/b/000000_0", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/b/000000_1", 1000, new byte[1], new MockBlock("host1")));
+    OrcInputFormat.FileGenerator gen =
+        new OrcInputFormat.FileGenerator(context, fs,
+            new MockPath(fs, "mock:/a"), false, null);
+    List<OrcInputFormat.SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    List<OrcSplit> splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    assertEquals(2, splits.size());
+    assertEquals("mock:/a/b/000000_0", splits.get(0).getPath().toUri().toString());
+    assertEquals("mock:/a/b/000000_1", splits.get(1).getPath().toUri().toString());
+    assertTrue(splits.get(0).isOriginal());
+    assertTrue(splits.get(1).isOriginal());
+
+    // Case 2: Test with originals and base => Single split strategy with two splits on compacted
+    // base since the presence of a base will make the originals obsolete.
+    fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/b/000000_0", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/b/000000_1", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/base_0000001/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/base_0000001/bucket_00001", 1000, new byte[1], new MockBlock("host1")));
+    gen = new OrcInputFormat.FileGenerator(context, fs, new MockPath(fs, "mock:/a"), false, null);
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    assertEquals(2, splits.size());
+    assertEquals("mock:/a/base_0000001/bucket_00000", splits.get(0).getPath().toUri().toString());
+    assertEquals("mock:/a/base_0000001/bucket_00001", splits.get(1).getPath().toUri().toString());
+    assertFalse(splits.get(0).isOriginal());
+    assertFalse(splits.get(1).isOriginal());
+
+    // Case 3: Test with originals and deltas => Two split strategies with two splits for each.
+    fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/b/000000_0", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/b/000000_1", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_0000001_0000001_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_0000001_0000001_0000/bucket_00001", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000001_0000001_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000001_0000001_0000/bucket_00001", 1000, new byte[1], new MockBlock("host1")));
+    gen = new OrcInputFormat.FileGenerator(context, fs, new MockPath(fs, "mock:/a"), false, null);
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(2, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    assertEquals(2, splits.size());
+    assertEquals("mock:/a/b/000000_0", splits.get(0).getPath().toUri().toString());
+    assertEquals("mock:/a/b/000000_1", splits.get(1).getPath().toUri().toString());
+    assertTrue(splits.get(0).isOriginal());
+    assertTrue(splits.get(1).isOriginal());
+    assertEquals(true, splitStrategies.get(1) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(1)).getSplits();
+    assertEquals(2, splits.size());
+    assertEquals("mock:/a/delta_0000001_0000001_0000/bucket_00000", splits.get(0).getPath().toUri().toString());
+    assertEquals("mock:/a/delta_0000001_0000001_0000/bucket_00001", splits.get(1).getPath().toUri().toString());
+    assertFalse(splits.get(0).isOriginal());
+    assertFalse(splits.get(1).isOriginal());
+
+    // Case 4: Test with originals and deltas but now with only one bucket covered, i.e. we will
+    // have originals & insert_deltas for only one bucket, but the delete_deltas will be for two
+    // buckets => Two strategies with one split for each.
+    // When split-update is enabled, we do not need to account for buckets that aren't covered.
+    // The reason why we are able to do so is because the valid user data has already been considered
+    // as base for the covered buckets. Hence, the uncovered buckets do not have any relevant
+    // data and we can just ignore them.
+    fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/b/000000_0", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_0000001_0000001_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000001_0000001_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000001_0000001_0000/bucket_00001", 1000, new byte[1], new MockBlock("host1")));
+    gen = new OrcInputFormat.FileGenerator(context, fs, new MockPath(fs, "mock:/a"), false, null);
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(2, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    assertEquals(1, splits.size());
+    assertEquals("mock:/a/b/000000_0", splits.get(0).getPath().toUri().toString());
+    assertTrue(splits.get(0).isOriginal());
+    assertEquals(true, splitStrategies.get(1) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(1)).getSplits();
+    assertEquals(1, splits.size());
+    assertEquals("mock:/a/delta_0000001_0000001_0000/bucket_00000", splits.get(0).getPath().toUri().toString());
+    assertFalse(splits.get(0).isOriginal());
+
+    // Case 5: Test with originals, compacted_base, insert_deltas, delete_deltas (exhaustive test)
+    // This should just generate one strategy with splits for base and insert_deltas.
+    fs = new MockFileSystem(conf,
+        new MockFile("mock:/a/b/000000_0", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/b/000000_1", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/base_0000001/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/base_0000001/bucket_00001", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_0000002_0000002_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delta_0000002_0000002_0000/bucket_00001", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000002_0000002_0000/bucket_00000", 1000, new byte[1], new MockBlock("host1")),
+        new MockFile("mock:/a/delete_delta_0000002_0000002_0000/bucket_00001", 1000, new byte[1], new MockBlock("host1")));
+    gen = new OrcInputFormat.FileGenerator(context, fs, new MockPath(fs, "mock:/a"), false, null);
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.ACIDSplitStrategy);
+    splits = ((OrcInputFormat.ACIDSplitStrategy)splitStrategies.get(0)).getSplits();
+    assertEquals(4, splits.size());
+    assertEquals("mock:/a/base_0000001/bucket_00000", splits.get(0).getPath().toUri().toString());
+    assertEquals("mock:/a/base_0000001/bucket_00001", splits.get(1).getPath().toUri().toString());
+    assertEquals("mock:/a/delta_0000002_0000002_0000/bucket_00000", splits.get(2).getPath().toUri().toString());
+    assertEquals("mock:/a/delta_0000002_0000002_0000/bucket_00001", splits.get(3).getPath().toUri().toString());
+    assertFalse(splits.get(0).isOriginal());
+    assertFalse(splits.get(1).isOriginal());
+    assertFalse(splits.get(2).isOriginal());
+    assertFalse(splits.get(3).isOriginal());
   }
 
   @Test
@@ -567,9 +744,10 @@ public class TestInputOutputFormat {
     OrcInputFormat.FileGenerator gen =
         new OrcInputFormat.FileGenerator(context, fs,
             new MockPath(fs, "mock:/a/b"), false, null);
-    OrcInputFormat.SplitStrategy splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
-    List<OrcSplit> splits = splitStrategy.getSplits();
+    List<OrcInputFormat.SplitStrategy<?>> splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
+    List<OrcSplit> splits = ((OrcInputFormat.BISplitStrategy)splitStrategies.get(0)).getSplits();
     int numSplits = splits.size();
     assertEquals(5, numSplits);
 
@@ -582,9 +760,10 @@ public class TestInputOutputFormat {
         new MockFile("mock:/a/b/part-04", 1000, new byte[1000], new MockBlock("host1", "host2")));
     gen = new OrcInputFormat.FileGenerator(context, fs,
         new MockPath(fs, "mock:/a/b"), false, null);
-    splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
-    splits = splitStrategy.getSplits();
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
+    splits = ((OrcInputFormat.BISplitStrategy)splitStrategies.get(0)).getSplits();
     numSplits = splits.size();
     assertEquals(5, numSplits);
 
@@ -602,9 +781,10 @@ public class TestInputOutputFormat {
             new MockBlock("host1", "host2")));
     gen = new OrcInputFormat.FileGenerator(context, fs,
         new MockPath(fs, "mock:/a/b"), false, null);
-    splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
-    splits = splitStrategy.getSplits();
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
+    splits = ((OrcInputFormat.BISplitStrategy)splitStrategies.get(0)).getSplits();
     numSplits = splits.size();
     assertEquals(10, numSplits);
 
@@ -622,9 +802,10 @@ public class TestInputOutputFormat {
             new MockBlock("host1", "host2")));
     gen = new OrcInputFormat.FileGenerator(context, fs,
         new MockPath(fs, "mock:/a/b"), false, null);
-    splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
-    splits = splitStrategy.getSplits();
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
+    splits = ((OrcInputFormat.BISplitStrategy)splitStrategies.get(0)).getSplits();
     numSplits = splits.size();
     assertEquals(10, numSplits);
 
@@ -642,9 +823,10 @@ public class TestInputOutputFormat {
             new MockBlock("host1", "host2"), new MockBlock("host1", "host2")));
     gen = new OrcInputFormat.FileGenerator(context, fs,
         new MockPath(fs, "mock:/a/b"), false, null);
-    splitStrategy = createSplitStrategy(context, gen);
-    assertEquals(true, splitStrategy instanceof OrcInputFormat.BISplitStrategy);
-    splits = splitStrategy.getSplits();
+    splitStrategies = createSplitStrategies(context, gen);
+    assertEquals(1, splitStrategies.size());
+    assertEquals(true, splitStrategies.get(0) instanceof OrcInputFormat.BISplitStrategy);
+    splits = ((OrcInputFormat.BISplitStrategy)splitStrategies.get(0)).getSplits();
     numSplits = splits.size();
     assertEquals(15, numSplits);
   }
@@ -667,22 +849,23 @@ public class TestInputOutputFormat {
 
     OrcInputFormat.CombinedCtx combineCtx = new OrcInputFormat.CombinedCtx();
     // The first directory becomes the base for combining.
-    SplitStrategy<?> ss = createOrCombineStrategy(context, fs, "mock:/a/1", combineCtx);
-    assertNull(ss);
+    List<SplitStrategy<?>> ss = createOrCombineStrategies(context, fs, "mock:/a/1", combineCtx);
+    assertTrue(ss.isEmpty());
     assertTrue(combineCtx.combined instanceof OrcInputFormat.ETLSplitStrategy);
     OrcInputFormat.ETLSplitStrategy etlSs = combineCtx.combined;
     assertEquals(2, etlSs.files.size());
     assertTrue(etlSs.isOriginal);
     assertEquals(1, etlSs.dirs.size());
     // The second one should be combined into the first.
-    ss = createOrCombineStrategy(context, fs, "mock:/a/2", combineCtx);
-    assertNull(ss);
+    ss = createOrCombineStrategies(context, fs, "mock:/a/2", combineCtx);
+    assertTrue(ss.isEmpty());
     assertTrue(combineCtx.combined instanceof OrcInputFormat.ETLSplitStrategy);
     assertEquals(4, etlSs.files.size());
     assertEquals(2, etlSs.dirs.size());
     // The third one has the base file, so it shouldn't be combined but could be a base.
-    ss = createOrCombineStrategy(context, fs, "mock:/a/3", combineCtx);
-    assertSame(etlSs, ss);
+    ss = createOrCombineStrategies(context, fs, "mock:/a/3", combineCtx);
+    assertEquals(1, ss.size());
+    assertSame(etlSs, ss.get(0));
     assertEquals(4, etlSs.files.size());
     assertEquals(2, etlSs.dirs.size());
     assertTrue(combineCtx.combined instanceof OrcInputFormat.ETLSplitStrategy);
@@ -691,34 +874,37 @@ public class TestInputOutputFormat {
     assertFalse(etlSs.isOriginal);
     assertEquals(1, etlSs.dirs.size());
     // Try the first again, it would not be combined and we'd retain the old base (less files).
-    ss = createOrCombineStrategy(context, fs, "mock:/a/1", combineCtx);
-    assertTrue(ss instanceof OrcInputFormat.ETLSplitStrategy);
-    assertNotSame(etlSs, ss);
-    OrcInputFormat.ETLSplitStrategy rejectedEtlSs = (OrcInputFormat.ETLSplitStrategy)ss;
+    ss = createOrCombineStrategies(context, fs, "mock:/a/1", combineCtx);
+    assertEquals(1, ss.size());
+    assertTrue(ss.get(0) instanceof OrcInputFormat.ETLSplitStrategy);
+    assertNotSame(etlSs, ss.get(0));
+    OrcInputFormat.ETLSplitStrategy rejectedEtlSs = (OrcInputFormat.ETLSplitStrategy)ss.get(0);
     assertEquals(2, rejectedEtlSs.files.size());
     assertEquals(1, rejectedEtlSs.dirs.size());
     assertTrue(rejectedEtlSs.isOriginal);
     assertEquals(1, etlSs.files.size());
     assertEquals(1, etlSs.dirs.size());
     // The fourth could be combined again.
-    ss = createOrCombineStrategy(context, fs, "mock:/a/4", combineCtx);
-    assertNull(ss);
+    ss = createOrCombineStrategies(context, fs, "mock:/a/4", combineCtx);
+    assertTrue(ss.isEmpty());
     assertTrue(combineCtx.combined instanceof OrcInputFormat.ETLSplitStrategy);
     assertEquals(2, etlSs.files.size());
     assertEquals(2, etlSs.dirs.size());
     // The fifth will not be combined because of delta files.
-    ss = createOrCombineStrategy(context, fs, "mock:/a/5", combineCtx);
-    assertTrue(ss instanceof OrcInputFormat.ETLSplitStrategy);
+    ss = createOrCombineStrategies(context, fs, "mock:/a/5", combineCtx);
+    assertEquals(1, ss.size());
+    assertTrue(ss.get(0) instanceof OrcInputFormat.ETLSplitStrategy);
     assertNotSame(etlSs, ss);
     assertEquals(2, etlSs.files.size());
     assertEquals(2, etlSs.dirs.size());
   }
 
-  public SplitStrategy<?> createOrCombineStrategy(OrcInputFormat.Context context,
+  public List<SplitStrategy<?>> createOrCombineStrategies(OrcInputFormat.Context context,
       MockFileSystem fs, String path, OrcInputFormat.CombinedCtx combineCtx) throws IOException {
     OrcInputFormat.AcidDirInfo adi = createAdi(context, fs, path);
-    return OrcInputFormat.determineSplitStrategy(combineCtx, context,
-        adi.fs, adi.splitPath, adi.acidInfo, adi.baseOrOriginalFiles, null, true);
+    return OrcInputFormat.determineSplitStrategies(combineCtx, context,
+        adi.fs, adi.splitPath, adi.acidInfo, adi.baseFiles, adi.parsedDeltas,
+        null, null, true);
   }
 
   public OrcInputFormat.AcidDirInfo createAdi(
@@ -727,11 +913,12 @@ public class TestInputOutputFormat {
         context, fs, new MockPath(fs, path), false, null).call();
   }
 
-  private OrcInputFormat.SplitStrategy createSplitStrategy(
+  private List<OrcInputFormat.SplitStrategy<?>> createSplitStrategies(
       OrcInputFormat.Context context, OrcInputFormat.FileGenerator gen) throws IOException {
     OrcInputFormat.AcidDirInfo adi = gen.call();
-    return OrcInputFormat.determineSplitStrategy(
-        null, context, adi.fs, adi.splitPath, adi.acidInfo, adi.baseOrOriginalFiles, null, true);
+    return OrcInputFormat.determineSplitStrategies(
+        null, context, adi.fs, adi.splitPath, adi.acidInfo, adi.baseFiles, adi.parsedDeltas,
+        null, null, true);
   }
 
   public static class MockBlock {
@@ -741,6 +928,14 @@ public class TestInputOutputFormat {
 
     public MockBlock(String... hosts) {
       this.hosts = hosts;
+    }
+
+    public void setOffset(int offset) {
+      this.offset = offset;
+    }
+
+    public void setLength(int length) {
+      this.length = length;
     }
 
     @Override
@@ -782,6 +977,17 @@ public class TestInputOutputFormat {
         block.length = Math.min(length - offset, blockSize);
         offset += block.length;
       }
+    }
+
+    @Override
+    public int hashCode() {
+      return path.hashCode() + 31 * length;
+    }
+
+    @Override
+    public boolean equals(final Object obj) {
+      if (!(obj instanceof MockFile)) { return false; }
+      return ((MockFile) obj).path.equals(this.path) && ((MockFile) obj).length == this.length;
     }
 
     @Override
@@ -881,6 +1087,9 @@ public class TestInputOutputFormat {
       DataOutputBuffer buf = (DataOutputBuffer) getWrappedStream();
       file.length = buf.getLength();
       file.content = new byte[file.length];
+      MockBlock block = new MockBlock("host1");
+      block.setLength(file.length);
+      setBlocks(block);
       System.arraycopy(buf.getData(), 0, file.content, 0, file.length);
     }
 
@@ -892,10 +1101,12 @@ public class TestInputOutputFormat {
 
   public static class MockFileSystem extends FileSystem {
     final List<MockFile> files = new ArrayList<MockFile>();
+    final Map<MockFile, FileStatus> fileStatusMap = new HashMap<>();
     Path workingDir = new Path("/");
     // statics for when the mock fs is created via FileSystem.get
     private static String blockedUgi = null;
     private final static List<MockFile> globalFiles = new ArrayList<MockFile>();
+    protected Statistics statistics;
 
     public MockFileSystem() {
       // empty
@@ -904,11 +1115,13 @@ public class TestInputOutputFormat {
     @Override
     public void initialize(URI uri, Configuration conf) {
       setConf(conf);
+      statistics = getStatistics("mock", getClass());
     }
 
     public MockFileSystem(Configuration conf, MockFile... files) {
       setConf(conf);
       this.files.addAll(Arrays.asList(files));
+      statistics = getStatistics("mock", getClass());
     }
 
     public static void setBlockedUgi(String s) {
@@ -928,12 +1141,26 @@ public class TestInputOutputFormat {
       }
     }
 
+    // increments file modification time
+    public void touch(MockFile file) {
+      if (fileStatusMap.containsKey(file)) {
+        FileStatus fileStatus = fileStatusMap.get(file);
+        FileStatus fileStatusNew = new FileStatus(fileStatus.getLen(), fileStatus.isDirectory(),
+            fileStatus.getReplication(), fileStatus.getBlockSize(),
+            fileStatus.getModificationTime() + 1, fileStatus.getAccessTime(),
+            fileStatus.getPermission(), fileStatus.getOwner(), fileStatus.getGroup(),
+            fileStatus.getPath());
+        fileStatusMap.put(file, fileStatusNew);
+      }
+    }
+
     @SuppressWarnings("serial")
     public static class MockAccessDenied extends IOException {
     }
 
     @Override
     public FSDataInputStream open(Path path, int i) throws IOException {
+      statistics.incrementReadOps(1);
       checkAccess();
       MockFile file = findFile(path);
       if (file != null) return new FSDataInputStream(new MockInputStream(file));
@@ -966,6 +1193,7 @@ public class TestInputOutputFormat {
                                      short replication, long blockSize,
                                      Progressable progressable
                                      ) throws IOException {
+      statistics.incrementWriteOps(1);
       checkAccess();
       MockFile file = findFile(path);
       if (file == null) {
@@ -979,6 +1207,7 @@ public class TestInputOutputFormat {
     public FSDataOutputStream append(Path path, int bufferSize,
                                      Progressable progressable
                                      ) throws IOException {
+      statistics.incrementWriteOps(1);
       checkAccess();
       return create(path, FsPermission.getDefault(), true, bufferSize,
           (short) 3, 256 * 1024, progressable);
@@ -986,24 +1215,68 @@ public class TestInputOutputFormat {
 
     @Override
     public boolean rename(Path path, Path path2) throws IOException {
+      statistics.incrementWriteOps(1);
       checkAccess();
       return false;
     }
 
     @Override
     public boolean delete(Path path) throws IOException {
+      statistics.incrementWriteOps(1);
       checkAccess();
       return false;
     }
 
     @Override
     public boolean delete(Path path, boolean b) throws IOException {
+      statistics.incrementWriteOps(1);
       checkAccess();
       return false;
     }
 
     @Override
+    public RemoteIterator<LocatedFileStatus> listLocatedStatus(final Path f)
+        throws IOException {
+      return new RemoteIterator<LocatedFileStatus>() {
+        private Iterator<LocatedFileStatus> iterator = listLocatedFileStatuses(f).iterator();
+
+        @Override
+        public boolean hasNext() throws IOException {
+          return iterator.hasNext();
+        }
+
+        @Override
+        public LocatedFileStatus next() throws IOException {
+          return iterator.next();
+        }
+      };
+    }
+
+    private List<LocatedFileStatus> listLocatedFileStatuses(Path path) throws IOException {
+      statistics.incrementReadOps(1);
+      checkAccess();
+      path = path.makeQualified(this);
+      List<LocatedFileStatus> result = new ArrayList<>();
+      String pathname = path.toString();
+      String pathnameAsDir = pathname + "/";
+      Set<String> dirs = new TreeSet<String>();
+      MockFile file = findFile(path);
+      if (file != null) {
+        result.add(createLocatedStatus(file));
+        return result;
+      }
+      findMatchingLocatedFiles(files, pathnameAsDir, dirs, result);
+      findMatchingLocatedFiles(globalFiles, pathnameAsDir, dirs, result);
+      // for each directory add it once
+      for(String dir: dirs) {
+        result.add(createLocatedDirectory(new MockPath(this, pathnameAsDir + dir)));
+      }
+      return result;
+    }
+
+    @Override
     public FileStatus[] listStatus(Path path) throws IOException {
+      statistics.incrementReadOps(1);
       checkAccess();
       path = path.makeQualified(this);
       List<FileStatus> result = new ArrayList<FileStatus>();
@@ -1039,6 +1312,23 @@ public class TestInputOutputFormat {
       }
     }
 
+    private void findMatchingLocatedFiles(
+        List<MockFile> files, String pathnameAsDir, Set<String> dirs, List<LocatedFileStatus> result)
+        throws IOException {
+      for (MockFile file: files) {
+        String filename = file.path.toString();
+        if (filename.startsWith(pathnameAsDir)) {
+          String tail = filename.substring(pathnameAsDir.length());
+          int nextSlash = tail.indexOf('/');
+          if (nextSlash > 0) {
+            dirs.add(tail.substring(0, nextSlash));
+          } else {
+            result.add(createLocatedStatus(file));
+          }
+        }
+      }
+    }
+
     @Override
     public void setWorkingDirectory(Path path) {
       workingDir = path;
@@ -1051,13 +1341,19 @@ public class TestInputOutputFormat {
 
     @Override
     public boolean mkdirs(Path path, FsPermission fsPermission) {
+      statistics.incrementWriteOps(1);
       return false;
     }
 
     private FileStatus createStatus(MockFile file) {
-      return new FileStatus(file.length, false, 1, file.blockSize, 0, 0,
+      if (fileStatusMap.containsKey(file)) {
+        return fileStatusMap.get(file);
+      }
+      FileStatus fileStatus = new FileStatus(file.length, false, 1, file.blockSize, 0, 0,
           FsPermission.createImmutable((short) 644), "owen", "group",
           file.path);
+      fileStatusMap.put(file, fileStatus);
+      return fileStatus;
     }
 
     private FileStatus createDirectory(Path dir) {
@@ -1065,8 +1361,21 @@ public class TestInputOutputFormat {
           FsPermission.createImmutable((short) 755), "owen", "group", dir);
     }
 
+    private LocatedFileStatus createLocatedStatus(MockFile file) throws IOException {
+      FileStatus fileStatus = createStatus(file);
+      return new LocatedFileStatus(fileStatus,
+          getFileBlockLocationsImpl(fileStatus, 0, fileStatus.getLen(), false));
+    }
+
+    private LocatedFileStatus createLocatedDirectory(Path dir) throws IOException {
+      FileStatus fileStatus = createDirectory(dir);
+      return new LocatedFileStatus(fileStatus,
+          getFileBlockLocationsImpl(fileStatus, 0, fileStatus.getLen(), false));
+    }
+
     @Override
     public FileStatus getFileStatus(Path path) throws IOException {
+      statistics.incrementReadOps(1);
       checkAccess();
       path = path.makeQualified(this);
       String pathnameAsDir = path.toString() + "/";
@@ -1088,6 +1397,15 @@ public class TestInputOutputFormat {
     @Override
     public BlockLocation[] getFileBlockLocations(FileStatus stat,
                                                  long start, long len) throws IOException {
+      return getFileBlockLocationsImpl(stat, start, len, true);
+    }
+
+    private BlockLocation[] getFileBlockLocationsImpl(final FileStatus stat, final long start,
+        final long len,
+        final boolean updateStats) throws IOException {
+      if (updateStats) {
+        statistics.incrementReadOps(1);
+      }
       checkAccess();
       List<BlockLocation> result = new ArrayList<BlockLocation>();
       MockFile file = findFile(stat.getPath());
@@ -1208,7 +1526,7 @@ public class TestInputOutputFormat {
     OrcInputFormat.Context context = new OrcInputFormat.Context(conf);
     OrcInputFormat.SplitGenerator splitter =
         new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-            fs.getFileStatus(new Path("/a/file")), null, true,
+            fs.getFileStatus(new Path("/a/file")), null, null, true,
             new ArrayList<AcidInputFormat.DeltaMetaData>(), true, null, null), null, true);
     OrcSplit result = splitter.createSplit(0, 200, null);
     assertEquals(0, result.getStart());
@@ -1249,7 +1567,7 @@ public class TestInputOutputFormat {
     OrcInputFormat.Context context = new OrcInputFormat.Context(conf);
     OrcInputFormat.SplitGenerator splitter =
         new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-            fs.getFileStatus(new Path("/a/file")), null, true,
+            fs.getFileStatus(new Path("/a/file")), null, null, true,
             new ArrayList<AcidInputFormat.DeltaMetaData>(), true, null, null), null, true);
     List<OrcSplit> results = splitter.call();
     OrcSplit result = results.get(0);
@@ -1272,7 +1590,7 @@ public class TestInputOutputFormat {
     HiveConf.setLongVar(conf, HiveConf.ConfVars.MAPREDMINSPLITSIZE, 0);
     context = new OrcInputFormat.Context(conf);
     splitter = new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-      fs.getFileStatus(new Path("/a/file")), null, true,
+      fs.getFileStatus(new Path("/a/file")), null, null, true,
         new ArrayList<AcidInputFormat.DeltaMetaData>(), true, null, null), null, true);
     results = splitter.call();
     for(int i=0; i < stripeSizes.length; ++i) {
@@ -1300,7 +1618,7 @@ public class TestInputOutputFormat {
     OrcInputFormat.Context context = new OrcInputFormat.Context(conf);
     OrcInputFormat.SplitGenerator splitter =
         new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-            fs.getFileStatus(new Path("/a/file")), null, true,
+            fs.getFileStatus(new Path("/a/file")), null, null, true,
             new ArrayList<AcidInputFormat.DeltaMetaData>(), true, null, null), null, true);
     List<OrcSplit> results = splitter.call();
     OrcSplit result = results.get(0);
@@ -1322,7 +1640,7 @@ public class TestInputOutputFormat {
     HiveConf.setLongVar(conf, HiveConf.ConfVars.MAPREDMINSPLITSIZE, 0);
     context = new OrcInputFormat.Context(conf);
     splitter = new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-        fs.getFileStatus(new Path("/a/file")), null, true,
+        fs.getFileStatus(new Path("/a/file")), null, null, true,
         new ArrayList<AcidInputFormat.DeltaMetaData>(),
         true, null, null), null, true);
     results = splitter.call();
@@ -1342,7 +1660,7 @@ public class TestInputOutputFormat {
     HiveConf.setLongVar(conf, HiveConf.ConfVars.MAPREDMINSPLITSIZE, 100000);
     context = new OrcInputFormat.Context(conf);
     splitter = new OrcInputFormat.SplitGenerator(new OrcInputFormat.SplitInfo(context, fs,
-        fs.getFileStatus(new Path("/a/file")), null, true,
+        fs.getFileStatus(new Path("/a/file")), null, null, true,
         new ArrayList<AcidInputFormat.DeltaMetaData>(),
         true, null, null), null, true);
     results = splitter.call();
@@ -1700,7 +2018,10 @@ public class TestInputOutputFormat {
     Utilities.clearWorkMap(conf);
     conf.set("hive.exec.plan", workDir.toString());
     conf.set("mapred.job.tracker", "local");
-    conf.set("hive.vectorized.execution.enabled", Boolean.toString(isVectorized));
+    String isVectorizedString = Boolean.toString(isVectorized);
+    conf.set("hive.vectorized.execution.enabled", isVectorizedString);
+    conf.set(Utilities.VECTOR_MODE, isVectorizedString);
+    conf.set(Utilities.USE_VECTORIZED_INPUT_FILE_FORMAT, isVectorizedString);
     conf.set("fs.mock.impl", MockFileSystem.class.getName());
     conf.set("mapred.mapper.class", ExecMapper.class.getName());
     Path root = new Path(warehouseDir, tableName);
@@ -1756,18 +2077,21 @@ public class TestInputOutputFormat {
       mapWork.setVectorizedRowBatchCtx(vectorizedRowBatchCtx);
     }
     mapWork.setUseBucketizedHiveInputFormat(false);
-    LinkedHashMap<String, ArrayList<String>> aliasMap =
-        new LinkedHashMap<String, ArrayList<String>>();
+    LinkedHashMap<Path, ArrayList<String>> aliasMap = new LinkedHashMap<>();
     ArrayList<String> aliases = new ArrayList<String>();
     aliases.add(tableName);
-    LinkedHashMap<String, PartitionDesc> partMap =
-        new LinkedHashMap<String, PartitionDesc>();
+    LinkedHashMap<Path, PartitionDesc> partMap = new LinkedHashMap<>();
     for(int p=0; p < partitions; ++p) {
-      aliasMap.put(partPath[p], aliases);
+      Path path = new Path(partPath[p]);
+      aliasMap.put(path, aliases);
       LinkedHashMap<String, String> partSpec =
           new LinkedHashMap<String, String>();
       PartitionDesc part = new PartitionDesc(tbl, partSpec);
-      partMap.put(partPath[p], part);
+      if (isVectorized) {
+        part.setVectorPartitionDesc(
+            VectorPartitionDesc.createVectorizedInputFileFormat("MockInputFileFormatClassName", false));
+      }
+      partMap.put(path, part);
     }
     mapWork.setPathToAliases(aliasMap);
     mapWork.setPathToPartitionInfo(partMap);
@@ -2291,6 +2615,1071 @@ public class TestInputOutputFormat {
     synchronized (TestOrcFile.class) {
       return (StructObjectInspector)ObjectInspectorFactory.getReflectionObjectInspector(
           SimpleRow.class, ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+  }
+
+  @Test
+  public void testSplitGenReadOps() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    conf.set("mapred.input.dir", "mock:///mocktable");
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable");
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for(int i=0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2*i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for(int i=0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2*i));
+    }
+    writer.close();
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktable
+    // call-2: open - mock:/mocktable/0_0
+    // call-3: open - mock:/mocktable/0_1
+    assertEquals(3, readOpsDelta);
+
+    assertEquals(2, splits.length);
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testSplitGenReadOpsLocalCache() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    // creates the static cache
+    MockPath mockPath = new MockPath(fs, "mock:///mocktbl");
+    conf.set("hive.orc.cache.stripe.details.size", "-1");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl
+    // call-2: open - mock:/mocktbl/0_0
+    // call-3: open - mock:/mocktbl/0_1
+    assertEquals(3, readOpsDelta);
+
+    // force BI to avoid reading footers
+    conf.set(HiveConf.ConfVars.HIVE_ORC_SPLIT_STRATEGY.varname, "BI");
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl
+    assertEquals(1, readOpsDelta);
+
+    // enable cache and use default strategy
+    conf.set("hive.orc.cache.stripe.details.size", "100");
+    conf.set(HiveConf.ConfVars.HIVE_ORC_SPLIT_STRATEGY.varname, "HYBRID");
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl
+    // call-2: open - mock:/mocktbl/0_0
+    // call-3: open - mock:/mocktbl/0_1
+    assertEquals(3, readOpsDelta);
+
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl
+    assertEquals(1, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testSplitGenReadOpsLocalCacheChangeFileLen() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    // creates the static cache
+    MockPath mockPath = new MockPath(fs, "mock:///mocktbl1");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktable
+    // call-2: open - mock:/mocktbl1/0_0
+    // call-3: open - mock:/mocktbl1/0_1
+    assertEquals(3, readOpsDelta);
+
+    // change file length and look for cache misses
+
+    fs.clear();
+
+    writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 100; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 100; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktable
+    // call-2: open - mock:/mocktbl1/0_0
+    // call-3: open - mock:/mocktbl1/0_1
+    assertEquals(3, readOpsDelta);
+
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl1
+    assertEquals(1, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testSplitGenReadOpsLocalCacheChangeModificationTime() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    // creates the static cache
+    MockPath mockPath = new MockPath(fs, "mock:///mocktbl2");
+    conf.set("hive.orc.cache.use.soft.references", "true");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl2
+    // call-2: open - mock:/mocktbl2/0_0
+    // call-3: open - mock:/mocktbl2/0_1
+    assertEquals(3, readOpsDelta);
+
+    // change file modification time and look for cache misses
+    FileSystem fs1 = FileSystem.get(conf);
+    MockFile mockFile = ((MockFileSystem) fs1).findFile(new Path(mockPath + "/0_0"));
+    ((MockFileSystem) fs1).touch(mockFile);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl2
+    // call-2: open - mock:/mocktbl2/0_1
+    assertEquals(2, readOpsDelta);
+
+    // touch the next file
+    fs1 = FileSystem.get(conf);
+    mockFile = ((MockFileSystem) fs1).findFile(new Path(mockPath + "/0_1"));
+    ((MockFileSystem) fs1).touch(mockFile);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl2
+    // call-2: open - mock:/mocktbl2/0_0
+    assertEquals(2, readOpsDelta);
+
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    orcInputFormat = new OrcInputFormat();
+    splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: listLocatedStatus - mock:/mocktbl2
+    assertEquals(1, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testNonVectorReaderNoFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable1");
+    conf.set("hive.orc.splits.include.file.footer", "false");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=false"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertFalse("No footer serialize test for non-vector reader, hasFooter is not expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, null);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read footer - split 1 => mock:/mocktable1/0_0
+    // call-2: open to read data - split 1 => mock:/mocktable1/0_0
+    // call-3: open to read footer - split 2 => mock:/mocktable1/0_1
+    // call-4: open to read data - split 2 => mock:/mocktable1/0_1
+    assertEquals(4, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testNonVectorReaderFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable2");
+    conf.set("hive.orc.splits.include.file.footer", "true");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=true"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertTrue("Footer serialize test for non-vector reader, hasFooter is expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, null);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read data - split 1 => mock:/mocktable2/0_0
+    // call-2: open to read data - split 2 => mock:/mocktable2/0_1
+    assertEquals(2, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testVectorReaderNoFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable3");
+    conf.set("hive.orc.splits.include.file.footer", "false");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    JobConf jobConf = createMockExecutionEnvironment(workDir, new Path("mock:///"),
+        "mocktable3", inspector, true, 0);
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=false"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertFalse("No footer serialize test for vector reader, hasFooter is not expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, jobConf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read footer - split 1 => mock:/mocktable3/0_0
+    // call-2: open to read data - split 1 => mock:/mocktable3/0_0
+    // call-3: open to read footer - split 2 => mock:/mocktable3/0_1
+    // call-4: open to read data - split 2 => mock:/mocktable3/0_1
+    assertEquals(4, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testVectorReaderFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable4");
+    conf.set("hive.orc.splits.include.file.footer", "true");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    JobConf jobConf = createMockExecutionEnvironment(workDir, new Path("mock:///"),
+        "mocktable4", inspector, true, 0);
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=true"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertTrue("Footer serialize test for vector reader, hasFooter is expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, jobConf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read data - split 1 => mock:/mocktable4/0_0
+    // call-2: open to read data - split 2 => mock:/mocktable4/0_1
+    assertEquals(2, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testACIDReaderNoFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable5");
+    conf.set("hive.transactional.table.scan", "true");
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS, MyRow.getColumnNamesProperty());
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES, MyRow.getColumnTypesProperty());
+    conf.set("hive.orc.splits.include.file.footer", "false");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=false"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertFalse("No footer serialize test for non-vector reader, hasFooter is not expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read footer - split 1 => mock:/mocktable5/0_0
+    // call-2: open to read data - split 1 => mock:/mocktable5/0_0
+    // call-3: open to read footer - split 2 => mock:/mocktable5/0_1
+    // call-4: open to read data - split 2 => mock:/mocktable5/0_1
+    assertEquals(4, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testACIDReaderFooterSerialize() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable6");
+    conf.set("hive.transactional.table.scan", "true");
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS, MyRow.getColumnNamesProperty());
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES, MyRow.getColumnTypesProperty());
+    conf.set("hive.orc.splits.include.file.footer", "true");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(mockPath + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(2, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=true"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      assertTrue(split.toString().contains("deltas=0"));
+      if (split instanceof OrcSplit) {
+        assertTrue("Footer serialize test for ACID reader, hasFooter is expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read data - split 1 => mock:/mocktable6/0_0
+    // call-2: open to read data - split 2 => mock:/mocktable6/0_1
+    assertEquals(2, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testACIDReaderNoFooterSerializeWithDeltas() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable7");
+    conf.set("hive.transactional.table.scan", "true");
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS, MyRow.getColumnNamesProperty());
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES, MyRow.getColumnTypesProperty());
+    conf.set("hive.orc.splits.include.file.footer", "false");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(new Path(mockPath + "/delta_001_002") + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(1, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=false"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      // NOTE: don't be surprised if deltas value is different
+      // in older release deltas=2 as min and max transaction are added separately to delta list.
+      // in newer release since both of them are put together deltas=1
+      assertTrue(split.toString().contains("deltas=1"));
+      if (split instanceof OrcSplit) {
+        assertFalse("No footer serialize test for ACID reader, hasFooter is not expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read footer - split 1 => mock:/mocktable7/0_0
+    // call-2: open to read data - split 1 => mock:/mocktable7/0_0
+    // call-3: open side file (flush length) of delta directory
+    // call-4: fs.exists() check for delta_xxx_xxx/bucket_00000 file
+    assertEquals(4, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  @Test
+  public void testACIDReaderFooterSerializeWithDeltas() throws Exception {
+    MockFileSystem fs = new MockFileSystem(conf);
+    MockPath mockPath = new MockPath(fs, "mock:///mocktable8");
+    conf.set("hive.transactional.table.scan", "true");
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS, MyRow.getColumnNamesProperty());
+    conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES, MyRow.getColumnTypesProperty());
+    conf.set("hive.orc.splits.include.file.footer", "true");
+    conf.set("mapred.input.dir", mockPath.toString());
+    conf.set("fs.defaultFS", "mock:///");
+    conf.set("fs.mock.impl", MockFileSystem.class.getName());
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+          ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+              ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+    Writer writer =
+        OrcFile.createWriter(new Path(mockPath + "/0_0"),
+            OrcFile.writerOptions(conf).blockPadding(false)
+                .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    writer = OrcFile.createWriter(new Path(new Path(mockPath + "/delta_001_002") + "/0_1"),
+        OrcFile.writerOptions(conf).blockPadding(false)
+            .bufferSize(1024).inspector(inspector));
+    for (int i = 0; i < 10; ++i) {
+      writer.addRow(new MyRow(i, 2 * i));
+    }
+    writer.close();
+
+    OrcInputFormat orcInputFormat = new OrcInputFormat();
+    InputSplit[] splits = orcInputFormat.getSplits(conf, 2);
+    assertEquals(1, splits.length);
+    int readOpsBefore = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsBefore = statistics.getReadOps();
+      }
+    }
+    assertTrue("MockFS has stats. Read ops not expected to be -1", readOpsBefore != -1);
+
+    for (InputSplit split : splits) {
+      assertTrue("OrcSplit is expected", split instanceof OrcSplit);
+      // ETL strategies will have start=3 (start of first stripe)
+      assertTrue(split.toString().contains("start=3"));
+      assertTrue(split.toString().contains("hasFooter=true"));
+      assertTrue(split.toString().contains("hasBase=true"));
+      // NOTE: don't be surprised if deltas value is different
+      // in older release deltas=2 as min and max transaction are added separately to delta list.
+      // in newer release since both of them are put together deltas=1
+      assertTrue(split.toString().contains("deltas=1"));
+      if (split instanceof OrcSplit) {
+        assertTrue("Footer serialize test for ACID reader, hasFooter is not expected in" +
+            " orc splits.", ((OrcSplit) split).hasFooter());
+      }
+      orcInputFormat.getRecordReader(split, conf, Reporter.NULL);
+    }
+
+    int readOpsDelta = -1;
+    for (FileSystem.Statistics statistics : FileSystem.getAllStatistics()) {
+      if (statistics.getScheme().equalsIgnoreCase("mock")) {
+        readOpsDelta = statistics.getReadOps() - readOpsBefore;
+      }
+    }
+    // call-1: open to read data - split 1 => mock:/mocktable8/0_0
+    // call-2: open side file (flush length) of delta directory
+    // call-3: fs.exists() check for delta_xxx_xxx/bucket_00000 file
+    assertEquals(3, readOpsDelta);
+
+    // revert back to local fs
+    conf.set("fs.defaultFS", "file:///");
+  }
+
+  /**
+   * also see {@link TestOrcFile#testPredicatePushdown()}
+   * This tests that {@link RecordReader#getRowNumber()} works with multiple splits
+   * @throws Exception
+   */
+  @Test
+  public void testRowNumberUniquenessInDifferentSplits() throws Exception {
+    Properties properties = new Properties();
+    properties.setProperty("columns", "x,y");
+    properties.setProperty("columns.types", "int:int");
+    StructObjectInspector inspector;
+    synchronized (TestOrcFile.class) {
+      inspector = (StructObjectInspector)
+        ObjectInspectorFactory.getReflectionObjectInspector(MyRow.class,
+          ObjectInspectorFactory.ObjectInspectorOptions.JAVA);
+    }
+
+    // Save the conf variable values so that they can be restored later.
+    long oldDefaultStripeSize = conf.getLong(HiveConf.ConfVars.HIVE_ORC_DEFAULT_STRIPE_SIZE.varname, -1L);
+    long oldMaxSplitSize = conf.getLong(HiveConf.ConfVars.MAPREDMAXSPLITSIZE.varname, -1L);
+
+    // Set the conf variable values for this test.
+    long newStripeSize = 10000L; // 10000 bytes per stripe
+    long newMaxSplitSize = 100L; // 1024 bytes per split
+    conf.setLong(HiveConf.ConfVars.HIVE_ORC_DEFAULT_STRIPE_SIZE.varname, newStripeSize);
+    conf.setLong(HiveConf.ConfVars.MAPREDMAXSPLITSIZE.varname, newMaxSplitSize);
+
+    SerDe serde = new OrcSerde();
+    HiveOutputFormat<?, ?> outFormat = new OrcOutputFormat();
+    org.apache.hadoop.hive.ql.exec.FileSinkOperator.RecordWriter writer =
+      outFormat.getHiveRecordWriter(conf, testFilePath, MyRow.class, true,
+        properties, Reporter.NULL);
+    // The following loop should create 20 stripes in the orc file.
+    for (int i = 0; i < newStripeSize * 10; ++i) {
+      writer.write(serde.serialize(new MyRow(i,i+1), inspector));
+    }
+    writer.close(true);
+    serde = new OrcSerde();
+    SerDeUtils.initializeSerDe(serde, conf, properties, null);
+    assertEquals(OrcSerde.OrcSerdeRow.class, serde.getSerializedClass());
+    inspector = (StructObjectInspector) serde.getObjectInspector();
+    assertEquals("struct<x:int,y:int>", inspector.getTypeName());
+    InputFormat<?,?> in = new OrcInputFormat();
+    FileInputFormat.setInputPaths(conf, testFilePath.toString());
+    int numExpectedSplits = 20;
+    InputSplit[] splits = in.getSplits(conf, numExpectedSplits);
+    assertEquals(numExpectedSplits, splits.length);
+
+    for (int i = 0; i < numExpectedSplits; ++i) {
+      OrcSplit split = (OrcSplit) splits[i];
+      Reader.Options orcReaderOptions = new Reader.Options();
+      orcReaderOptions.range(split.getStart(), split.getLength());
+      OrcFile.ReaderOptions qlReaderOptions = OrcFile.readerOptions(conf).maxLength(split.getFileLength());
+      Reader reader = OrcFile.createReader(split.getPath(), qlReaderOptions);
+      RecordReader recordReader = reader.rowsOptions(orcReaderOptions);
+      for(int j = 0; recordReader.hasNext(); j++) {
+        long rowNum = (i * 5000) + j;
+        long rowNumActual = recordReader.getRowNumber();
+        assertEquals("rowNum=" + rowNum, rowNum, rowNumActual);
+        Object row = recordReader.next(null);
+      }
+      recordReader.close();
+    }
+
+    // Reset the conf variable values that we changed for this test.
+    if (oldDefaultStripeSize != -1L) {
+      conf.setLong(HiveConf.ConfVars.HIVE_ORC_DEFAULT_STRIPE_SIZE.varname, oldDefaultStripeSize);
+    } else {
+      // this means that nothing was set for default stripe size previously, so we should unset it.
+      conf.unset(HiveConf.ConfVars.HIVE_ORC_DEFAULT_STRIPE_SIZE.varname);
+    }
+    if (oldMaxSplitSize != -1L) {
+      conf.setLong(HiveConf.ConfVars.MAPREDMAXSPLITSIZE.varname, oldMaxSplitSize);
+    } else {
+      // this means that nothing was set for default stripe size previously, so we should unset it.
+      conf.unset(HiveConf.ConfVars.MAPREDMAXSPLITSIZE.varname);
     }
   }
 }

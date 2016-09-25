@@ -22,21 +22,24 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.TimeZone;
+
 import org.apache.hadoop.hive.llap.IncrementalObjectSizeEstimator;
 import org.apache.hadoop.hive.llap.IncrementalObjectSizeEstimator.ObjectEstimator;
 import org.apache.hadoop.hive.llap.cache.EvictionDispatcher;
 import org.apache.hadoop.hive.llap.cache.LlapCacheableBuffer;
 import org.apache.hadoop.hive.ql.io.SyntheticFileId;
 import org.apache.hadoop.hive.ql.io.orc.encoded.OrcBatchKey;
+import org.apache.orc.DataReader;
 import org.apache.orc.OrcProto;
 import org.apache.orc.StripeInformation;
-import org.apache.orc.impl.MetadataReader;
 import org.apache.orc.impl.OrcIndex;
 
 public class OrcStripeMetadata extends LlapCacheableBuffer {
   private final OrcBatchKey stripeKey;
   private final List<OrcProto.ColumnEncoding> encodings;
   private final List<OrcProto.Stream> streams;
+  private final String writerTimezone;
   private final long rowCount;
   private OrcIndex rowIndex;
 
@@ -54,12 +57,13 @@ public class OrcStripeMetadata extends LlapCacheableBuffer {
     SIZE_ESTIMATOR = SIZE_ESTIMATORS.get(OrcStripeMetadata.class);
   }
 
-  public OrcStripeMetadata(OrcBatchKey stripeKey, MetadataReader mr, StripeInformation stripe,
+  public OrcStripeMetadata(OrcBatchKey stripeKey, DataReader mr, StripeInformation stripe,
       boolean[] includes, boolean[] sargColumns) throws IOException {
     this.stripeKey = stripeKey;
     OrcProto.StripeFooter footer = mr.readStripeFooter(stripe);
     streams = footer.getStreamsList();
     encodings = footer.getColumnsList();
+    writerTimezone = footer.getWriterTimezone();
     rowCount = stripe.getNumberOfRows();
     rowIndex = mr.readRowIndex(stripe, footer, includes, null, sargColumns, null);
 
@@ -70,6 +74,7 @@ public class OrcStripeMetadata extends LlapCacheableBuffer {
     stripeKey = new OrcBatchKey(id, 0, 0);
     encodings = new ArrayList<>();
     streams = new ArrayList<>();
+    writerTimezone = "";
     rowCount = estimatedMemUsage = 0;
   }
 
@@ -95,7 +100,7 @@ public class OrcStripeMetadata extends LlapCacheableBuffer {
     return true;
   }
 
-  public void loadMissingIndexes(MetadataReader mr, StripeInformation stripe, boolean[] includes,
+  public void loadMissingIndexes(DataReader mr, StripeInformation stripe, boolean[] includes,
       boolean[] sargColumns) throws IOException {
     // TODO: should we save footer to avoid a read here?
     rowIndex = mr.readRowIndex(stripe, null, includes, rowIndex.getRowGroupIndex(),
@@ -123,6 +128,9 @@ public class OrcStripeMetadata extends LlapCacheableBuffer {
     return streams;
   }
 
+  public String getWriterTimezone() {
+    return writerTimezone;
+  }
   @Override
   public long getMemoryUsage() {
     return estimatedMemUsage;

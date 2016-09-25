@@ -22,6 +22,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,6 +33,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import com.google.common.base.Preconditions;
+import org.apache.commons.math3.util.Pair;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -108,13 +111,15 @@ public class HttpServer {
     private int port;
     private int maxThreads;
     private HiveConf conf;
-    private Map<String, Object> contextAttrs = new HashMap<String, Object>();
+    private final Map<String, Object> contextAttrs = new HashMap<String, Object>();
     private String keyStorePassword;
     private String keyStorePath;
     private String spnegoPrincipal;
     private String spnegoKeytab;
     private boolean useSPNEGO;
     private boolean useSSL;
+    private final List<Pair<String, Class<? extends HttpServlet>>> servlets =
+        new LinkedList<Pair<String, Class<? extends HttpServlet>>>();
 
     public Builder(String name) {
       Preconditions.checkArgument(name != null && !name.isEmpty(), "Name must be specified");
@@ -125,9 +130,10 @@ public class HttpServer {
       return new HttpServer(this);
     }
 
-    public Builder setConf(HiveConf conf) {
+    public Builder setConf(HiveConf origConf) {
+      this.conf = new HiveConf(origConf);
+      origConf.stripHiddenConfigurations(conf);
       setContextAttribute(CONF_CONTEXT_ATTRIBUTE, conf);
-      this.conf = conf;
       return this;
     }
 
@@ -186,6 +192,11 @@ public class HttpServer {
 
     public Builder setContextAttribute(String name, Object value) {
       contextAttrs.put(name, value);
+      return this;
+    }
+
+    public Builder addServlet(String endpoint, Class<? extends HttpServlet> servlet) {
+      servlets.add(new Pair<String, Class<? extends HttpServlet>>(endpoint, servlet));
       return this;
     }
   }
@@ -345,6 +356,7 @@ public class HttpServer {
     connector.setAcceptQueueSize(queueSize);
     connector.setResolveNames(false);
     connector.setUseDirectBuffers(false);
+    connector.setRequestHeaderSize(1024*64);
     connector.setReuseAddress(!Shell.WINDOWS);
     return connector;
   }
@@ -382,6 +394,10 @@ public class HttpServer {
     addServlet("jmx", "/jmx", JMXJsonServlet.class);
     addServlet("conf", "/conf", ConfServlet.class);
     addServlet("stacks", "/stacks", StackServlet.class);
+
+    for (Pair<String, Class<? extends HttpServlet>> p : b.servlets) {
+      addServlet(p.getFirst(), "/" + p.getFirst(), p.getSecond());
+    }
 
     ServletContextHandler staticCtx =
       new ServletContextHandler(contexts, "/static");

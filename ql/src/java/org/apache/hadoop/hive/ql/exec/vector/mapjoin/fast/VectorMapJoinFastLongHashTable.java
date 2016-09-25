@@ -48,17 +48,15 @@ public abstract class VectorMapJoinFastLongHashTable
 
   private transient final boolean isLogDebugEnabled = LOG.isDebugEnabled();
 
-  private HashTableKeyType hashTableKeyType;
+  private final HashTableKeyType hashTableKeyType;
 
-  private boolean isOuterJoin;
+  private final boolean isOuterJoin;
 
-  private BinarySortableDeserializeRead keyBinarySortableDeserializeRead;
+  private final BinarySortableDeserializeRead keyBinarySortableDeserializeRead;
 
-  private boolean useMinMax;
+  private final boolean useMinMax;
   private long min;
   private long max;
-
-  private BytesWritable testValueBytesWritable;
 
   @Override
   public boolean useMinMax() {
@@ -80,8 +78,15 @@ public abstract class VectorMapJoinFastLongHashTable
     byte[] keyBytes = currentKey.getBytes();
     int keyLength = currentKey.getLength();
     keyBinarySortableDeserializeRead.set(keyBytes, 0, keyLength);
-    if (keyBinarySortableDeserializeRead.readCheckNull()) {
-      return;
+    try {
+      if (!keyBinarySortableDeserializeRead.readNextField()) {
+        return;
+      }
+    } catch (Exception e) {
+      throw new HiveException(
+          "\nDeserializeRead details: " +
+              keyBinarySortableDeserializeRead.getDetailedReadPositionString() +
+          "\nException: " + e.toString());
     }
 
     long key = VectorMapJoinFastLongHashUtil.deserializeLongKey(
@@ -89,17 +94,6 @@ public abstract class VectorMapJoinFastLongHashTable
 
     add(key, currentValue);
   }
-
-
-  @VisibleForTesting
-  public void putRow(long currentKey, byte[] currentValue) throws HiveException, IOException {
-    if (testValueBytesWritable == null) {
-      testValueBytesWritable = new BytesWritable();
-    }
-    testValueBytesWritable.set(currentValue, 0, currentValue.length);
-    add(currentKey, testValueBytesWritable);
-  }
-
 
   protected abstract void assignSlot(int slot, long key, boolean isNewKey, BytesWritable currentValue);
 
@@ -272,8 +266,11 @@ public abstract class VectorMapJoinFastLongHashTable
     super(initialCapacity, loadFactor, writeBuffersSize);
     this.isOuterJoin = isOuterJoin;
     this.hashTableKeyType = hashTableKeyType;
-    PrimitiveTypeInfo[] primitiveTypeInfos = { TypeInfoFactory.longTypeInfo };
-    keyBinarySortableDeserializeRead = new BinarySortableDeserializeRead(primitiveTypeInfos);
+    PrimitiveTypeInfo[] primitiveTypeInfos = { hashTableKeyType.getPrimitiveTypeInfo() };
+    keyBinarySortableDeserializeRead =
+        new BinarySortableDeserializeRead(
+            primitiveTypeInfos,
+            /* useExternalBuffer */ false);
     allocateBucketArray();
     useMinMax = minMaxEnabled;
     min = Long.MAX_VALUE;

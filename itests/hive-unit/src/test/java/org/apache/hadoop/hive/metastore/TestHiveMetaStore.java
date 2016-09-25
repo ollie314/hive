@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.metastore;
 
+import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -33,6 +34,8 @@ import java.util.Set;
 
 import junit.framework.TestCase;
 
+import org.datanucleus.api.jdo.JDOPersistenceManager;
+import org.datanucleus.api.jdo.JDOPersistenceManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileSystem;
@@ -94,6 +97,8 @@ public abstract class TestHiveMetaStore extends TestCase {
   private static final String TEST_DB1_NAME = "testdb1";
   private static final String TEST_DB2_NAME = "testdb2";
 
+  private static final int DEFAULT_LIMIT_PARTITION_REQUEST = 100;
+
   @Override
   protected void setUp() throws Exception {
     hiveConf = new HiveConf(this.getClass());
@@ -107,6 +112,7 @@ public abstract class TestHiveMetaStore extends TestCase {
     hiveConf.set("hive.key4", "0");
 
     hiveConf.setIntVar(ConfVars.METASTORE_BATCH_RETRIEVE_MAX, 2);
+    hiveConf.setIntVar(ConfVars.METASTORE_LIMIT_PARTITION_REQUEST, DEFAULT_LIMIT_PARTITION_REQUEST);
   }
 
   public void testNameMethods() {
@@ -558,7 +564,49 @@ public abstract class TestHiveMetaStore extends TestCase {
 
   }
 
+  public void testListPartitionsWihtLimitEnabled() throws Throwable {
+    // create a table with multiple partitions
+    String dbName = "compdb";
+    String tblName = "comptbl";
+    String typeName = "Person";
 
+    cleanUp(dbName, tblName, typeName);
+
+    // Create too many partitions, just enough to validate over limit requests
+    List<List<String>> values = new ArrayList<List<String>>();
+    for (int i=0; i<DEFAULT_LIMIT_PARTITION_REQUEST + 1; i++) {
+      values.add(makeVals("2008-07-01 14:13:12", Integer.toString(i)));
+    }
+
+    createMultiPartitionTableSchema(dbName, tblName, typeName, values);
+
+    List<Partition> partitions;
+    short maxParts;
+
+    // Requesting more partitions than allowed should throw an exception
+    try {
+      maxParts = -1;
+      partitions = client.listPartitions(dbName, tblName, maxParts);
+      fail("should have thrown MetaException about partition limit");
+    } catch (MetaException e) {
+      assertTrue(true);
+    }
+
+    // Requesting more partitions than allowed should throw an exception
+    try {
+      maxParts = DEFAULT_LIMIT_PARTITION_REQUEST + 1;
+      partitions = client.listPartitions(dbName, tblName, maxParts);
+      fail("should have thrown MetaException about partition limit");
+    } catch (MetaException e) {
+      assertTrue(true);
+    }
+
+    // Requesting less partitions than allowed should work
+    maxParts = DEFAULT_LIMIT_PARTITION_REQUEST / 2;
+    partitions = client.listPartitions(dbName, tblName, maxParts);
+    assertNotNull("should have returned partitions", partitions);
+    assertEquals(" should have returned 50 partitions", maxParts, partitions.size());
+  }
 
   public void testListPartitionNames() throws Throwable {
     // create a table with multiple partitions
@@ -2651,7 +2699,7 @@ public abstract class TestHiveMetaStore extends TestCase {
       boolean gotException = false;
       try {
         func = client.getFunction(dbName, "nonexistent_func");
-      } catch (MetaException e) {
+      } catch (NoSuchObjectException e) {
         // expected failure
         gotException = true;
       }
@@ -2826,6 +2874,11 @@ public abstract class TestHiveMetaStore extends TestCase {
 
   @Test
   public void testTransactionalValidation() throws Throwable {
+    String dbName = "acidDb";
+    silentDropDatabase(dbName);
+    Database db = new Database();
+    db.setName(dbName);
+    client.createDatabase(db);
     String tblName = "acidTable";
     String owner = "acid";
     Map<String, String> fields = new HashMap<String, String>();
@@ -2847,7 +2900,7 @@ public abstract class TestHiveMetaStore extends TestCase {
 
     // Fail - No "transactional" property is specified
     try {
-      Table t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+      Table t = createTable(dbName, tblName, owner, params, null, sd, 0);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("'transactional' property of TBLPROPERTIES may only have value 'true'", e.getMessage());
@@ -2857,7 +2910,7 @@ public abstract class TestHiveMetaStore extends TestCase {
     try {
       params.clear();
       params.put("transactional", "foobar");
-      Table t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+      Table t = createTable(dbName, tblName, owner, params, null, sd, 0);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("'transactional' property of TBLPROPERTIES may only have value 'true'", e.getMessage());
@@ -2867,7 +2920,7 @@ public abstract class TestHiveMetaStore extends TestCase {
     try {
       params.clear();
       params.put("transactional", "true");
-      Table t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+      Table t = createTable(dbName, tblName, owner, params, null, sd, 0);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("The table must be bucketed and stored using an ACID compliant format (such as ORC)", e.getMessage());
@@ -2880,7 +2933,7 @@ public abstract class TestHiveMetaStore extends TestCase {
       List<String> bucketCols = new ArrayList<String>();
       bucketCols.add("income");
       sd.setBucketCols(bucketCols);
-      Table t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+      Table t = createTable(dbName, tblName, owner, params, null, sd, 0);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("The table must be bucketed and stored using an ACID compliant format (such as ORC)", e.getMessage());
@@ -2894,7 +2947,7 @@ public abstract class TestHiveMetaStore extends TestCase {
     sd.setBucketCols(bucketCols);
     sd.setInputFormat("org.apache.hadoop.hive.ql.io.orc.OrcInputFormat");
     sd.setOutputFormat("org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat");
-    Table t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+    Table t = createTable(dbName, tblName, owner, params, null, sd, 0);
     Assert.assertTrue("CREATE TABLE should succeed", "true".equals(t.getParameters().get(hive_metastoreConstants.TABLE_IS_TRANSACTIONAL)));
 
     /// ALTER TABLE scenarios
@@ -2905,7 +2958,7 @@ public abstract class TestHiveMetaStore extends TestCase {
       params.put("transactional", "false");
       t = new Table();
       t.setParameters(params);
-      client.alter_table(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, t);
+      client.alter_table(dbName, tblName, t);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("TBLPROPERTIES with 'transactional'='true' cannot be unset", e.getMessage());
@@ -2916,10 +2969,10 @@ public abstract class TestHiveMetaStore extends TestCase {
       tblName += "1";
       params.clear();
       sd.unsetBucketCols();
-      t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+      t = createTable(dbName, tblName, owner, params, null, sd, 0);
       params.put("transactional", "true");
       t.setParameters(params);
-      client.alter_table(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, t);
+      client.alter_table(dbName, tblName, t);
       Assert.assertTrue("Expected exception", false);
     } catch (MetaException e) {
       Assert.assertEquals("The table must be bucketed and stored using an ACID compliant format (such as ORC)", e.getMessage());
@@ -2930,11 +2983,11 @@ public abstract class TestHiveMetaStore extends TestCase {
     params.clear();
     sd.setNumBuckets(1);
     sd.setBucketCols(bucketCols);
-    t = createTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, owner, params, null, sd, 0);
+    t = createTable(dbName, tblName, owner, params, null, sd, 0);
     params.put("transactional", "true");
     t.setParameters(params);
     t.setPartitionKeys(Collections.EMPTY_LIST);
-    client.alter_table(MetaStoreUtils.DEFAULT_DATABASE_NAME, tblName, t);
+    client.alter_table(dbName, tblName, t);
     Assert.assertTrue("ALTER TABLE should succeed", "true".equals(t.getParameters().get(hive_metastoreConstants.TABLE_IS_TRANSACTIONAL)));
   }
 
@@ -3164,6 +3217,54 @@ public abstract class TestHiveMetaStore extends TestCase {
     Thread.sleep(timeout);
     client.getAllDatabases();
     client.close();
+  }
+
+  public void testJDOPersistanceManagerCleanup() throws Exception {
+    if (isThriftClient == false) {
+      return;
+    }
+
+    int numObjectsBeforeClose =  getJDOPersistanceManagerCacheSize();
+    HiveMetaStoreClient closingClient = new HiveMetaStoreClient(hiveConf);
+    closingClient.getAllDatabases();
+    closingClient.close();
+    Thread.sleep(5 * 1000); // give HMS time to handle close request
+    int numObjectsAfterClose =  getJDOPersistanceManagerCacheSize();
+    Assert.assertTrue(numObjectsBeforeClose == numObjectsAfterClose);
+
+    HiveMetaStoreClient nonClosingClient = new HiveMetaStoreClient(hiveConf);
+    nonClosingClient.getAllDatabases();
+    // Drop connection without calling close. HMS thread deleteContext
+    // will trigger cleanup
+    nonClosingClient.getTTransport().close();
+    Thread.sleep(5 * 1000);
+    int numObjectsAfterDroppedConnection =  getJDOPersistanceManagerCacheSize();
+    Assert.assertTrue(numObjectsAfterClose == numObjectsAfterDroppedConnection);
+  }
+
+  private static int getJDOPersistanceManagerCacheSize() {
+    JDOPersistenceManagerFactory jdoPmf;
+    Set<JDOPersistenceManager> pmCacheObj;
+    Field pmCache;
+    Field pmf;
+    try {
+      pmf = ObjectStore.class.getDeclaredField("pmf");
+      if (pmf != null) {
+        pmf.setAccessible(true);
+        jdoPmf = (JDOPersistenceManagerFactory) pmf.get(null);
+        pmCache = JDOPersistenceManagerFactory.class.getDeclaredField("pmCache");
+        if (pmCache != null) {
+          pmCache.setAccessible(true);
+          pmCacheObj = (Set<JDOPersistenceManager>) pmCache.get(jdoPmf);
+          if (pmCacheObj != null) {
+            return pmCacheObj.size();
+          }
+        }
+      }
+    } catch (Exception ex) {
+      System.out.println(ex);
+    }
+    return -1;
   }
 
   private HiveMetaHookLoader getHookLoader() {

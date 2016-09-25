@@ -29,6 +29,7 @@ import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
@@ -85,10 +86,17 @@ public class PartitionDesc implements Serializable, Cloneable {
 
   public PartitionDesc(final Partition part) throws HiveException {
     PartitionDescConstructorHelper(part, getTableDesc(part.getTable()), true);
-    setProperties(part.getMetadataFromPartitionSchema());
+    if(Utilities.isInputFileFormatSelfDescribing(this)) {
+      // if IF is self describing no need to send column info per partition, since its not used anyway.
+      Table tbl = part.getTable();
+      setProperties(MetaStoreUtils.getSchemaWithoutCols(part.getTPartition().getSd(), part.getTPartition().getSd(),
+          part.getParameters(), tbl.getDbName(), tbl.getTableName(), tbl.getPartitionKeys()));
+    } else {
+      setProperties(part.getMetadataFromPartitionSchema());
+    }
   }
 
-  /** 
+  /**
    * @param part Partition
    * @param tblDesc Table Descriptor
    * @param usePartSchemaProperties Use Partition Schema Properties to set the
@@ -190,7 +198,7 @@ public class PartitionDesc implements Serializable, Cloneable {
     Class<? extends OutputFormat> outputClass = outputFileFormatClass == null ? null :
       HiveFileFormatUtils.getOutputFormatSubstitute(outputFileFormatClass);
     if (outputClass != null) {
-      this.outputFileFormatClass = (Class<? extends HiveOutputFormat>) 
+      this.outputFileFormatClass = (Class<? extends HiveOutputFormat>)
         CLASS_INTERNER.intern(outputClass);
     } else {
       this.outputFileFormatClass = outputClass;
@@ -297,20 +305,13 @@ public class PartitionDesc implements Serializable, Cloneable {
    * @param path
    *          URI to the partition file
    */
-  public void deriveBaseFileName(String path) {
+  public void deriveBaseFileName(Path path) {
     PlanUtils.configureInputJobPropertiesForStorageHandler(tableDesc);
 
     if (path == null) {
       return;
     }
-    try {
-      Path p = new Path(path);
-      baseFileName = p.getName();
-    } catch (Exception ex) {
-      // don't really care about the exception. the goal is to capture the
-      // the last component at the minimum - so set to the complete path
-      baseFileName = path;
-    }
+    baseFileName = path.getName();
   }
 
   public void intern(Interner<TableDesc> interner) {

@@ -25,6 +25,7 @@ class TProtocolVersion:
   HIVE_CLI_SERVICE_PROTOCOL_V6 = 5
   HIVE_CLI_SERVICE_PROTOCOL_V7 = 6
   HIVE_CLI_SERVICE_PROTOCOL_V8 = 7
+  HIVE_CLI_SERVICE_PROTOCOL_V9 = 8
 
   _VALUES_TO_NAMES = {
     0: "HIVE_CLI_SERVICE_PROTOCOL_V1",
@@ -35,6 +36,7 @@ class TProtocolVersion:
     5: "HIVE_CLI_SERVICE_PROTOCOL_V6",
     6: "HIVE_CLI_SERVICE_PROTOCOL_V7",
     7: "HIVE_CLI_SERVICE_PROTOCOL_V8",
+    8: "HIVE_CLI_SERVICE_PROTOCOL_V9",
   }
 
   _NAMES_TO_VALUES = {
@@ -46,6 +48,7 @@ class TProtocolVersion:
     "HIVE_CLI_SERVICE_PROTOCOL_V6": 5,
     "HIVE_CLI_SERVICE_PROTOCOL_V7": 6,
     "HIVE_CLI_SERVICE_PROTOCOL_V8": 7,
+    "HIVE_CLI_SERVICE_PROTOCOL_V9": 8,
   }
 
 class TTypeId:
@@ -154,6 +157,7 @@ class TOperationState:
   ERROR_STATE = 5
   UKNOWN_STATE = 6
   PENDING_STATE = 7
+  TIMEDOUT_STATE = 8
 
   _VALUES_TO_NAMES = {
     0: "INITIALIZED_STATE",
@@ -164,6 +168,7 @@ class TOperationState:
     5: "ERROR_STATE",
     6: "UKNOWN_STATE",
     7: "PENDING_STATE",
+    8: "TIMEDOUT_STATE",
   }
 
   _NAMES_TO_VALUES = {
@@ -175,6 +180,7 @@ class TOperationState:
     "ERROR_STATE": 5,
     "UKNOWN_STATE": 6,
     "PENDING_STATE": 7,
+    "TIMEDOUT_STATE": 8,
   }
 
 class TOperationType:
@@ -2965,6 +2971,8 @@ class TRowSet:
    - startRowOffset
    - rows
    - columns
+   - binaryColumns
+   - columnCount
   """
 
   thrift_spec = (
@@ -2972,12 +2980,16 @@ class TRowSet:
     (1, TType.I64, 'startRowOffset', None, None, ), # 1
     (2, TType.LIST, 'rows', (TType.STRUCT,(TRow, TRow.thrift_spec)), None, ), # 2
     (3, TType.LIST, 'columns', (TType.STRUCT,(TColumn, TColumn.thrift_spec)), None, ), # 3
+    (4, TType.STRING, 'binaryColumns', None, None, ), # 4
+    (5, TType.I32, 'columnCount', None, None, ), # 5
   )
 
-  def __init__(self, startRowOffset=None, rows=None, columns=None,):
+  def __init__(self, startRowOffset=None, rows=None, columns=None, binaryColumns=None, columnCount=None,):
     self.startRowOffset = startRowOffset
     self.rows = rows
     self.columns = columns
+    self.binaryColumns = binaryColumns
+    self.columnCount = columnCount
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -3015,6 +3027,16 @@ class TRowSet:
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.STRING:
+          self.binaryColumns = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.I32:
+          self.columnCount = iprot.readI32()
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -3043,6 +3065,14 @@ class TRowSet:
         iter117.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
+    if self.binaryColumns is not None:
+      oprot.writeFieldBegin('binaryColumns', TType.STRING, 4)
+      oprot.writeString(self.binaryColumns)
+      oprot.writeFieldEnd()
+    if self.columnCount is not None:
+      oprot.writeFieldBegin('columnCount', TType.I32, 5)
+      oprot.writeI32(self.columnCount)
+      oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
 
@@ -3059,6 +3089,8 @@ class TRowSet:
     value = (value * 31) ^ hash(self.startRowOffset)
     value = (value * 31) ^ hash(self.rows)
     value = (value * 31) ^ hash(self.columns)
+    value = (value * 31) ^ hash(self.binaryColumns)
+    value = (value * 31) ^ hash(self.columnCount)
     return value
 
   def __repr__(self):
@@ -3471,7 +3503,7 @@ class TOpenSessionReq:
 
   thrift_spec = (
     None, # 0
-    (1, TType.I32, 'client_protocol', None,     7, ), # 1
+    (1, TType.I32, 'client_protocol', None,     8, ), # 1
     (2, TType.STRING, 'username', None, None, ), # 2
     (3, TType.STRING, 'password', None, None, ), # 3
     (4, TType.MAP, 'configuration', (TType.STRING,None,TType.STRING,None), None, ), # 4
@@ -3588,7 +3620,7 @@ class TOpenSessionResp:
   thrift_spec = (
     None, # 0
     (1, TType.STRUCT, 'status', (TStatus, TStatus.thrift_spec), None, ), # 1
-    (2, TType.I32, 'serverProtocolVersion', None,     7, ), # 2
+    (2, TType.I32, 'serverProtocolVersion', None,     8, ), # 2
     (3, TType.STRUCT, 'sessionHandle', (TSessionHandle, TSessionHandle.thrift_spec), None, ), # 3
     (4, TType.MAP, 'configuration', (TType.STRING,None,TType.STRING,None), None, ), # 4
   )
@@ -4136,6 +4168,7 @@ class TExecuteStatementReq:
    - statement
    - confOverlay
    - runAsync
+   - queryTimeout
   """
 
   thrift_spec = (
@@ -4144,13 +4177,15 @@ class TExecuteStatementReq:
     (2, TType.STRING, 'statement', None, None, ), # 2
     (3, TType.MAP, 'confOverlay', (TType.STRING,None,TType.STRING,None), None, ), # 3
     (4, TType.BOOL, 'runAsync', None, False, ), # 4
+    (5, TType.I64, 'queryTimeout', None, 0, ), # 5
   )
 
-  def __init__(self, sessionHandle=None, statement=None, confOverlay=None, runAsync=thrift_spec[4][4],):
+  def __init__(self, sessionHandle=None, statement=None, confOverlay=None, runAsync=thrift_spec[4][4], queryTimeout=thrift_spec[5][4],):
     self.sessionHandle = sessionHandle
     self.statement = statement
     self.confOverlay = confOverlay
     self.runAsync = runAsync
+    self.queryTimeout = queryTimeout
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -4188,6 +4223,11 @@ class TExecuteStatementReq:
           self.runAsync = iprot.readBool()
         else:
           iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.I64:
+          self.queryTimeout = iprot.readI64()
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -4218,6 +4258,10 @@ class TExecuteStatementReq:
       oprot.writeFieldBegin('runAsync', TType.BOOL, 4)
       oprot.writeBool(self.runAsync)
       oprot.writeFieldEnd()
+    if self.queryTimeout is not None:
+      oprot.writeFieldBegin('queryTimeout', TType.I64, 5)
+      oprot.writeI64(self.queryTimeout)
+      oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
 
@@ -4235,6 +4279,7 @@ class TExecuteStatementReq:
     value = (value * 31) ^ hash(self.statement)
     value = (value * 31) ^ hash(self.confOverlay)
     value = (value * 31) ^ hash(self.runAsync)
+    value = (value * 31) ^ hash(self.queryTimeout)
     return value
 
   def __repr__(self):
@@ -5559,6 +5604,423 @@ class TGetFunctionsResp:
   def __ne__(self, other):
     return not (self == other)
 
+class TGetPrimaryKeysReq:
+  """
+  Attributes:
+   - sessionHandle
+   - catalogName
+   - schemaName
+   - tableName
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRUCT, 'sessionHandle', (TSessionHandle, TSessionHandle.thrift_spec), None, ), # 1
+    (2, TType.STRING, 'catalogName', None, None, ), # 2
+    (3, TType.STRING, 'schemaName', None, None, ), # 3
+    (4, TType.STRING, 'tableName', None, None, ), # 4
+  )
+
+  def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None,):
+    self.sessionHandle = sessionHandle
+    self.catalogName = catalogName
+    self.schemaName = schemaName
+    self.tableName = tableName
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRUCT:
+          self.sessionHandle = TSessionHandle()
+          self.sessionHandle.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.catalogName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.schemaName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.STRING:
+          self.tableName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('TGetPrimaryKeysReq')
+    if self.sessionHandle is not None:
+      oprot.writeFieldBegin('sessionHandle', TType.STRUCT, 1)
+      self.sessionHandle.write(oprot)
+      oprot.writeFieldEnd()
+    if self.catalogName is not None:
+      oprot.writeFieldBegin('catalogName', TType.STRING, 2)
+      oprot.writeString(self.catalogName)
+      oprot.writeFieldEnd()
+    if self.schemaName is not None:
+      oprot.writeFieldBegin('schemaName', TType.STRING, 3)
+      oprot.writeString(self.schemaName)
+      oprot.writeFieldEnd()
+    if self.tableName is not None:
+      oprot.writeFieldBegin('tableName', TType.STRING, 4)
+      oprot.writeString(self.tableName)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.sessionHandle is None:
+      raise TProtocol.TProtocolException(message='Required field sessionHandle is unset!')
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.sessionHandle)
+    value = (value * 31) ^ hash(self.catalogName)
+    value = (value * 31) ^ hash(self.schemaName)
+    value = (value * 31) ^ hash(self.tableName)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class TGetPrimaryKeysResp:
+  """
+  Attributes:
+   - status
+   - operationHandle
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRUCT, 'status', (TStatus, TStatus.thrift_spec), None, ), # 1
+    (2, TType.STRUCT, 'operationHandle', (TOperationHandle, TOperationHandle.thrift_spec), None, ), # 2
+  )
+
+  def __init__(self, status=None, operationHandle=None,):
+    self.status = status
+    self.operationHandle = operationHandle
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRUCT:
+          self.status = TStatus()
+          self.status.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRUCT:
+          self.operationHandle = TOperationHandle()
+          self.operationHandle.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('TGetPrimaryKeysResp')
+    if self.status is not None:
+      oprot.writeFieldBegin('status', TType.STRUCT, 1)
+      self.status.write(oprot)
+      oprot.writeFieldEnd()
+    if self.operationHandle is not None:
+      oprot.writeFieldBegin('operationHandle', TType.STRUCT, 2)
+      self.operationHandle.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.status is None:
+      raise TProtocol.TProtocolException(message='Required field status is unset!')
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.status)
+    value = (value * 31) ^ hash(self.operationHandle)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class TGetCrossReferenceReq:
+  """
+  Attributes:
+   - sessionHandle
+   - parentCatalogName
+   - parentSchemaName
+   - parentTableName
+   - foreignCatalogName
+   - foreignSchemaName
+   - foreignTableName
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRUCT, 'sessionHandle', (TSessionHandle, TSessionHandle.thrift_spec), None, ), # 1
+    (2, TType.STRING, 'parentCatalogName', None, None, ), # 2
+    (3, TType.STRING, 'parentSchemaName', None, None, ), # 3
+    (4, TType.STRING, 'parentTableName', None, None, ), # 4
+    (5, TType.STRING, 'foreignCatalogName', None, None, ), # 5
+    (6, TType.STRING, 'foreignSchemaName', None, None, ), # 6
+    (7, TType.STRING, 'foreignTableName', None, None, ), # 7
+  )
+
+  def __init__(self, sessionHandle=None, parentCatalogName=None, parentSchemaName=None, parentTableName=None, foreignCatalogName=None, foreignSchemaName=None, foreignTableName=None,):
+    self.sessionHandle = sessionHandle
+    self.parentCatalogName = parentCatalogName
+    self.parentSchemaName = parentSchemaName
+    self.parentTableName = parentTableName
+    self.foreignCatalogName = foreignCatalogName
+    self.foreignSchemaName = foreignSchemaName
+    self.foreignTableName = foreignTableName
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRUCT:
+          self.sessionHandle = TSessionHandle()
+          self.sessionHandle.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.parentCatalogName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.parentSchemaName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.STRING:
+          self.parentTableName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.STRING:
+          self.foreignCatalogName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 6:
+        if ftype == TType.STRING:
+          self.foreignSchemaName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 7:
+        if ftype == TType.STRING:
+          self.foreignTableName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('TGetCrossReferenceReq')
+    if self.sessionHandle is not None:
+      oprot.writeFieldBegin('sessionHandle', TType.STRUCT, 1)
+      self.sessionHandle.write(oprot)
+      oprot.writeFieldEnd()
+    if self.parentCatalogName is not None:
+      oprot.writeFieldBegin('parentCatalogName', TType.STRING, 2)
+      oprot.writeString(self.parentCatalogName)
+      oprot.writeFieldEnd()
+    if self.parentSchemaName is not None:
+      oprot.writeFieldBegin('parentSchemaName', TType.STRING, 3)
+      oprot.writeString(self.parentSchemaName)
+      oprot.writeFieldEnd()
+    if self.parentTableName is not None:
+      oprot.writeFieldBegin('parentTableName', TType.STRING, 4)
+      oprot.writeString(self.parentTableName)
+      oprot.writeFieldEnd()
+    if self.foreignCatalogName is not None:
+      oprot.writeFieldBegin('foreignCatalogName', TType.STRING, 5)
+      oprot.writeString(self.foreignCatalogName)
+      oprot.writeFieldEnd()
+    if self.foreignSchemaName is not None:
+      oprot.writeFieldBegin('foreignSchemaName', TType.STRING, 6)
+      oprot.writeString(self.foreignSchemaName)
+      oprot.writeFieldEnd()
+    if self.foreignTableName is not None:
+      oprot.writeFieldBegin('foreignTableName', TType.STRING, 7)
+      oprot.writeString(self.foreignTableName)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.sessionHandle is None:
+      raise TProtocol.TProtocolException(message='Required field sessionHandle is unset!')
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.sessionHandle)
+    value = (value * 31) ^ hash(self.parentCatalogName)
+    value = (value * 31) ^ hash(self.parentSchemaName)
+    value = (value * 31) ^ hash(self.parentTableName)
+    value = (value * 31) ^ hash(self.foreignCatalogName)
+    value = (value * 31) ^ hash(self.foreignSchemaName)
+    value = (value * 31) ^ hash(self.foreignTableName)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class TGetCrossReferenceResp:
+  """
+  Attributes:
+   - status
+   - operationHandle
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRUCT, 'status', (TStatus, TStatus.thrift_spec), None, ), # 1
+    (2, TType.STRUCT, 'operationHandle', (TOperationHandle, TOperationHandle.thrift_spec), None, ), # 2
+  )
+
+  def __init__(self, status=None, operationHandle=None,):
+    self.status = status
+    self.operationHandle = operationHandle
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRUCT:
+          self.status = TStatus()
+          self.status.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRUCT:
+          self.operationHandle = TOperationHandle()
+          self.operationHandle.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('TGetCrossReferenceResp')
+    if self.status is not None:
+      oprot.writeFieldBegin('status', TType.STRUCT, 1)
+      self.status.write(oprot)
+      oprot.writeFieldEnd()
+    if self.operationHandle is not None:
+      oprot.writeFieldBegin('operationHandle', TType.STRUCT, 2)
+      self.operationHandle.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.status is None:
+      raise TProtocol.TProtocolException(message='Required field status is unset!')
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.status)
+    value = (value * 31) ^ hash(self.operationHandle)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
 class TGetOperationStatusReq:
   """
   Attributes:
@@ -5638,6 +6100,7 @@ class TGetOperationStatusResp:
    - taskStatus
    - operationStarted
    - operationCompleted
+   - hasResultSet
   """
 
   thrift_spec = (
@@ -5650,9 +6113,10 @@ class TGetOperationStatusResp:
     (6, TType.STRING, 'taskStatus', None, None, ), # 6
     (7, TType.I64, 'operationStarted', None, None, ), # 7
     (8, TType.I64, 'operationCompleted', None, None, ), # 8
+    (9, TType.BOOL, 'hasResultSet', None, None, ), # 9
   )
 
-  def __init__(self, status=None, operationState=None, sqlState=None, errorCode=None, errorMessage=None, taskStatus=None, operationStarted=None, operationCompleted=None,):
+  def __init__(self, status=None, operationState=None, sqlState=None, errorCode=None, errorMessage=None, taskStatus=None, operationStarted=None, operationCompleted=None, hasResultSet=None,):
     self.status = status
     self.operationState = operationState
     self.sqlState = sqlState
@@ -5661,6 +6125,7 @@ class TGetOperationStatusResp:
     self.taskStatus = taskStatus
     self.operationStarted = operationStarted
     self.operationCompleted = operationCompleted
+    self.hasResultSet = hasResultSet
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -5712,6 +6177,11 @@ class TGetOperationStatusResp:
           self.operationCompleted = iprot.readI64()
         else:
           iprot.skip(ftype)
+      elif fid == 9:
+        if ftype == TType.BOOL:
+          self.hasResultSet = iprot.readBool()
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -5754,6 +6224,10 @@ class TGetOperationStatusResp:
       oprot.writeFieldBegin('operationCompleted', TType.I64, 8)
       oprot.writeI64(self.operationCompleted)
       oprot.writeFieldEnd()
+    if self.hasResultSet is not None:
+      oprot.writeFieldBegin('hasResultSet', TType.BOOL, 9)
+      oprot.writeBool(self.hasResultSet)
+      oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
 
@@ -5773,6 +6247,7 @@ class TGetOperationStatusResp:
     value = (value * 31) ^ hash(self.taskStatus)
     value = (value * 31) ^ hash(self.operationStarted)
     value = (value * 31) ^ hash(self.operationCompleted)
+    value = (value * 31) ^ hash(self.hasResultSet)
     return value
 
   def __repr__(self):

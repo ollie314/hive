@@ -35,6 +35,7 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
 import org.apache.hadoop.hive.ql.DriverContext;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.WindowsPathUtil;
 import org.apache.hadoop.hive.ql.exec.mr.ExecDriver;
 import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
@@ -71,6 +72,7 @@ import org.apache.hadoop.util.Shell;
  */
 public class TestExecDriver extends TestCase {
 
+  static QueryState queryState;
   static HiveConf conf;
 
   private static final String tmpdir;
@@ -82,9 +84,12 @@ public class TestExecDriver extends TestCase {
 
   static {
     try {
-      conf = new HiveConf(ExecDriver.class);
+      queryState = new QueryState(new HiveConf(ExecDriver.class));
+      conf = queryState.getConf();
       conf.setBoolVar(HiveConf.ConfVars.SUBMITVIACHILD, true);
       conf.setBoolVar(HiveConf.ConfVars.SUBMITLOCALTASKVIACHILD, true);
+      conf.setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
+          "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
 
       SessionState.start(conf);
 
@@ -141,7 +146,7 @@ public class TestExecDriver extends TestCase {
         db.dropTable(MetaStoreUtils.DEFAULT_DATABASE_NAME, src, true, true);
         db.createTable(src, cols, null, TextInputFormat.class,
             HiveIgnoreKeyTextOutputFormat.class);
-        db.loadTable(hadoopDataFile[i], src, false, true, false, false);
+        db.loadTable(hadoopDataFile[i], src, false, true, false, false, false);
         i++;
       }
 
@@ -159,7 +164,7 @@ public class TestExecDriver extends TestCase {
   }
 
   public static void addMapWork(MapredWork mr, Table tbl, String alias, Operator<?> work) {
-    mr.getMapWork().addMapWork(tbl.getDataLocation().toString(), alias, work, new PartitionDesc(
+    mr.getMapWork().addMapWork(tbl.getDataLocation(), alias, work, new PartitionDesc(
         Utilities.getTableDesc(tbl), null));
   }
 
@@ -480,7 +485,7 @@ public class TestExecDriver extends TestCase {
     MapRedTask mrtask = new MapRedTask();
     DriverContext dctx = new DriverContext ();
     mrtask.setWork(mr);
-    mrtask.initialize(conf, null, dctx, null);
+    mrtask.initialize(queryState, null, dctx, null);
     int exitVal =  mrtask.execute(dctx);
 
     if (exitVal != 0) {

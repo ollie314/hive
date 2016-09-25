@@ -36,6 +36,7 @@ import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.common.BlobStorageUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.Warehouse;
@@ -244,11 +245,9 @@ public final class GenMapRedUtils {
           TableDesc tt_desc = tt_descLst.get(pos);
           MapWork mWork = plan.getMapWork();
           if (mWork.getPathToAliases().get(taskTmpDir) == null) {
-            mWork.getPathToAliases().put(taskTmpDir,
-                new ArrayList<String>());
-            mWork.getPathToAliases().get(taskTmpDir).add(taskTmpDir);
-            mWork.getPathToPartitionInfo().put(taskTmpDir,
-                new PartitionDesc(tt_desc, null));
+            mWork.removePathToAlias(new Path(taskTmpDir));
+            mWork.addPathToAlias(new Path(taskTmpDir),taskTmpDir);
+            mWork.addPathToPartitionInfo(new Path(taskTmpDir), new PartitionDesc(tt_desc, null));
             mWork.getAliasToWork().put(taskTmpDir, topOperators.get(pos));
           }
         }
@@ -527,9 +526,6 @@ public final class GenMapRedUtils {
     Map<String, String> props = tsOp.getConf().getOpProps();
     if (props != null) {
       Properties target = aliasPartnDesc.getProperties();
-      if (target == null) {
-        aliasPartnDesc.setProperties(target = new Properties());
-      }
       target.putAll(props);
     }
 
@@ -668,9 +664,6 @@ public final class GenMapRedUtils {
 
       if (props != null) {
         Properties target = tblDesc.getProperties();
-        if (target == null) {
-          tblDesc.setProperties(target = new Properties());
-        }
         target.putAll(props);
       }
 
@@ -710,16 +703,13 @@ public final class GenMapRedUtils {
     if (!local) {
       while (iterPath.hasNext()) {
         assert iterPartnDesc.hasNext();
-        String path = iterPath.next().toString();
+        Path path = iterPath.next();
 
         PartitionDesc prtDesc = iterPartnDesc.next();
 
         // Add the path to alias mapping
-        if (plan.getPathToAliases().get(path) == null) {
-          plan.getPathToAliases().put(path, new ArrayList<String>());
-        }
-        plan.getPathToAliases().get(path).add(alias_id);
-        plan.getPathToPartitionInfo().put(path, prtDesc);
+        plan.addPathToAlias(path,alias_id);
+        plan.addPathToPartitionInfo(path, prtDesc);
         if (LOG.isDebugEnabled()) {
           LOG.debug("Information added for path " + path);
         }
@@ -767,7 +757,7 @@ public final class GenMapRedUtils {
    *          table descriptor
    * @throws SerDeException
    */
-  public static void setTaskPlan(String path, String alias,
+  public static void setTaskPlan(Path path, String alias,
       Operator<? extends OperatorDesc> topOp, MapWork plan, boolean local,
       TableDesc tt_desc) throws SemanticException {
 
@@ -786,11 +776,8 @@ public final class GenMapRedUtils {
     }
 
     if (!local) {
-      if (plan.getPathToAliases().get(path) == null) {
-        plan.getPathToAliases().put(path, new ArrayList<String>());
-      }
-      plan.getPathToAliases().get(path).add(alias);
-      plan.getPathToPartitionInfo().put(path, new PartitionDesc(tt_desc, null));
+      plan.addPathToAlias(path,alias);
+      plan.addPathToPartitionInfo(path, new PartitionDesc(tt_desc, null));
       plan.getAliasToWork().put(alias, topOp);
     } else {
       // populate local work if needed
@@ -913,19 +900,19 @@ public final class GenMapRedUtils {
       }
     } else if (task instanceof ExecDriver) {
       MapredWork work = (MapredWork) task.getWork();
-      work.getMapWork().deriveLlap(conf);
+      work.getMapWork().deriveLlap(conf, true);
     } else if (task != null && (task.getWork() instanceof TezWork)) {
       TezWork work = (TezWork)task.getWork();
       for (BaseWork w : work.getAllWorkUnsorted()) {
         if (w instanceof MapWork) {
-          ((MapWork)w).deriveLlap(conf);
+          ((MapWork)w).deriveLlap(conf, false);
         }
       }
     } else if (task instanceof SparkTask) {
       SparkWork work = (SparkWork) task.getWork();
       for (BaseWork w : work.getAllWorkUnsorted()) {
         if (w instanceof MapWork) {
-          ((MapWork) w).deriveLlap(conf);
+          ((MapWork) w).deriveLlap(conf, false);
         }
       }
     }
@@ -988,8 +975,8 @@ public final class GenMapRedUtils {
         conf.getBoolVar(
             HiveConf.ConfVars.HIVE_MAPPER_CANNOT_SPAN_MULTIPLE_PARTITIONS);
     work.setMapperCannotSpanPartns(mapperCannotSpanPartns);
-    work.setPathToAliases(new LinkedHashMap<String, ArrayList<String>>());
-    work.setPathToPartitionInfo(new LinkedHashMap<String, PartitionDesc>());
+    work.setPathToAliases(new LinkedHashMap<Path, ArrayList<String>>());
+    work.setPathToPartitionInfo(new LinkedHashMap<Path, PartitionDesc>());
     work.setAliasToWork(new LinkedHashMap<String, Operator<? extends OperatorDesc>>());
     return mrWork;
   }
@@ -1139,7 +1126,7 @@ public final class GenMapRedUtils {
     }
 
     // Add the path to alias mapping
-    setTaskPlan(taskTmpDir.toUri().toString(), streamDesc, tableScanOp, cplan.getMapWork(), false, tt_desc);
+    setTaskPlan(taskTmpDir, streamDesc, tableScanOp, cplan.getMapWork(), false, tt_desc);
     opProcCtx.setCurrTopOp(null);
     opProcCtx.setCurrAliasId(null);
     opProcCtx.setCurrTask(childTask);
@@ -1167,13 +1154,13 @@ public final class GenMapRedUtils {
    */
   public static void replaceMapWork(String sourceAlias, String targetAlias,
       MapWork source, MapWork target) {
-    Map<String, ArrayList<String>> sourcePathToAliases = source.getPathToAliases();
-    Map<String, PartitionDesc> sourcePathToPartitionInfo = source.getPathToPartitionInfo();
+    Map<Path, ArrayList<String>> sourcePathToAliases = source.getPathToAliases();
+    Map<Path, PartitionDesc> sourcePathToPartitionInfo = source.getPathToPartitionInfo();
     Map<String, Operator<? extends OperatorDesc>> sourceAliasToWork = source.getAliasToWork();
     Map<String, PartitionDesc> sourceAliasToPartnInfo = source.getAliasToPartnInfo();
 
-    Map<String, ArrayList<String>> targetPathToAliases = target.getPathToAliases();
-    Map<String, PartitionDesc> targetPathToPartitionInfo = target.getPathToPartitionInfo();
+    LinkedHashMap<Path, ArrayList<String>> targetPathToAliases = target.getPathToAliases();
+    LinkedHashMap<Path, PartitionDesc> targetPathToPartitionInfo = target.getPathToPartitionInfo();
     Map<String, Operator<? extends OperatorDesc>> targetAliasToWork = target.getAliasToWork();
     Map<String, PartitionDesc> targetAliasToPartnInfo = target.getAliasToPartnInfo();
 
@@ -1194,15 +1181,15 @@ public final class GenMapRedUtils {
     // Remove unnecessary information from target
     targetAliasToWork.remove(targetAlias);
     targetAliasToPartnInfo.remove(targetAlias);
-    List<String> pathsToRemove = new ArrayList<String>();
-    for (Entry<String, ArrayList<String>> entry: targetPathToAliases.entrySet()) {
+    List<Path> pathsToRemove = new ArrayList<>();
+    for (Entry<Path, ArrayList<String>> entry: targetPathToAliases.entrySet()) {
       ArrayList<String> aliases = entry.getValue();
       aliases.remove(targetAlias);
       if (aliases.isEmpty()) {
         pathsToRemove.add(entry.getKey());
       }
     }
-    for (String pathToRemove: pathsToRemove) {
+    for (Path pathToRemove: pathsToRemove) {
       targetPathToAliases.remove(pathToRemove);
       targetPathToPartitionInfo.remove(pathToRemove);
     }
@@ -1211,19 +1198,21 @@ public final class GenMapRedUtils {
     targetAliasToWork.put(sourceAlias, sourceAliasToWork.get(sourceAlias));
     targetAliasToPartnInfo.putAll(sourceAliasToPartnInfo);
     targetPathToPartitionInfo.putAll(sourcePathToPartitionInfo);
-    List<String> pathsToAdd = new ArrayList<String>();
-    for (Entry<String, ArrayList<String>> entry: sourcePathToAliases.entrySet()) {
+    List<Path> pathsToAdd = new ArrayList<>();
+    for (Entry<Path, ArrayList<String>> entry: sourcePathToAliases.entrySet()) {
       ArrayList<String> aliases = entry.getValue();
       if (aliases.contains(sourceAlias)) {
         pathsToAdd.add(entry.getKey());
       }
     }
-    for (String pathToAdd: pathsToAdd) {
+    for (Path pathToAdd: pathsToAdd) {
       if (!targetPathToAliases.containsKey(pathToAdd)) {
         targetPathToAliases.put(pathToAdd, new ArrayList<String>());
       }
       targetPathToAliases.get(pathToAdd).add(sourceAlias);
     }
+    target.setPathToAliases(targetPathToAliases);
+    target.setPathToPartitionInfo(targetPathToPartitionInfo);
   }
 
   /**
@@ -1500,11 +1489,6 @@ public final class GenMapRedUtils {
     statsWork.setAggKey(nd.getConf().getStatsAggPrefix());
     Task<? extends Serializable> statsTask = TaskFactory.get(statsWork, hconf);
 
-    // mark the MapredWork and FileSinkOperator for gathering stats
-    nd.getConf().setGatherStats(true);
-    nd.getConf().setStatsReliable(hconf.getBoolVar(ConfVars.HIVE_STATS_RELIABLE));
-    // mrWork.addDestinationTable(nd.getConf().getTableInfo().getTableName());
-
     // subscribe feeds from the MoveTask so that MoveTask can forward the list
     // of dynamic partition list to the StatsTask
     mvTask.addDependentTask(statsTask);
@@ -1541,16 +1525,16 @@ public final class GenMapRedUtils {
     TableScanOperator topOp,  FileSinkDesc fsDesc) {
 
     ArrayList<String> aliases = new ArrayList<String>();
-    String inputDir = fsDesc.getFinalDirName().toString();
+    Path inputDir = fsDesc.getFinalDirName();
     TableDesc tblDesc = fsDesc.getTableInfo();
-    aliases.add(inputDir); // dummy alias: just use the input path
+    aliases.add(inputDir.toString()); // dummy alias: just use the input path
 
     // constructing the default MapredWork
     MapredWork cMrPlan = GenMapRedUtils.getMapRedWorkFromConf(conf);
     MapWork cplan = cMrPlan.getMapWork();
-    cplan.getPathToAliases().put(inputDir, aliases);
-    cplan.getPathToPartitionInfo().put(inputDir, new PartitionDesc(tblDesc, null));
-    cplan.getAliasToWork().put(inputDir, topOp);
+    cplan.addPathToAlias(inputDir, aliases);
+    cplan.addPathToPartitionInfo(inputDir, new PartitionDesc(tblDesc, null));
+    cplan.getAliasToWork().put(inputDir.toString(), topOp);
     cplan.setMapperCannotSpanPartns(true);
 
     return cplan;
@@ -1597,14 +1581,13 @@ public final class GenMapRedUtils {
     // create the merge file work
     MergeFileWork work = new MergeFileWork(inputDirs, finalName,
         hasDynamicPartitions, tblDesc.getInputFileFormatClass().getName());
-    LinkedHashMap<String, ArrayList<String>> pathToAliases =
-        new LinkedHashMap<String, ArrayList<String>>();
-    pathToAliases.put(inputDir.toString(), inputDirstr);
+    LinkedHashMap<Path, ArrayList<String>> pathToAliases = new LinkedHashMap<>();
+    pathToAliases.put(inputDir, inputDirstr);
     work.setMapperCannotSpanPartns(true);
     work.setPathToAliases(pathToAliases);
     PartitionDesc pDesc = new PartitionDesc(tblDesc, null);
     pDesc.setInputFileFormatClass(internalIFClass);
-    work.getPathToPartitionInfo().put(inputDir.toString(), pDesc);
+    work.addPathToPartitionInfo(inputDir, pDesc);
     work.setListBucketingCtx(fsInputDesc.getLbCtx());
 
     // create alias to work which contains the merge operator
@@ -1742,9 +1725,14 @@ public final class GenMapRedUtils {
       // no need of merging if the move is to a local file system
       MoveTask mvTask = (MoveTask) GenMapRedUtils.findMoveTask(mvTasks, fsOp);
 
-      if (mvTask != null && isInsertTable && hconf.getBoolVar(ConfVars.HIVESTATSAUTOGATHER) &&
-          !fsOp.getConf().isMaterialization()) {
-        GenMapRedUtils.addStatsTask(fsOp, mvTask, currTask, hconf);
+      if (mvTask != null && isInsertTable && hconf.getBoolVar(ConfVars.HIVESTATSAUTOGATHER)
+          && !fsOp.getConf().isMaterialization()) {
+        // mark the MapredWork and FileSinkOperator for gathering stats
+        fsOp.getConf().setGatherStats(true);
+        fsOp.getConf().setStatsReliable(hconf.getBoolVar(ConfVars.HIVE_STATS_RELIABLE));
+        if (!mvTask.hasFollowingStatsTask()) {
+          GenMapRedUtils.addStatsTask(fsOp, mvTask, currTask, hconf);
+        }
       }
 
       if ((mvTask != null) && !mvTask.isLocal() && fsOp.getConf().canBeMerged()) {
@@ -1809,15 +1797,17 @@ public final class GenMapRedUtils {
     Path dest = null;
 
     if (chDir) {
-      dest = fsOp.getConf().getFinalDirName();
+      FileSinkDesc fileSinkDesc = fsOp.getConf();
+      dest = fileSinkDesc.getFinalDirName();
 
       // generate the temporary file
       // it must be on the same file system as the current destination
       Context baseCtx = parseCtx.getContext();
 
-      Path tmpDir = baseCtx.getExternalTmpPath(dest);
+      // Create the required temporary file in the HDFS location if the destination
+      // path of the FileSinkOperator table is a blobstore path.
+      Path tmpDir = baseCtx.getTempDirForPath(fileSinkDesc.getDestPath());
 
-      FileSinkDesc fileSinkDesc = fsOp.getConf();
       // Change all the linked file sink descriptors
       if (fileSinkDesc.isLinkedFileSink()) {
         for (FileSinkDesc fsConf:fileSinkDesc.getLinkedFileSinkDesc()) {

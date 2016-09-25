@@ -26,6 +26,7 @@ import static org.apache.hadoop.hive.conf.SystemVariables.*;
 
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -41,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 /**
  * SetProcessor.
@@ -50,6 +52,7 @@ public class SetProcessor implements CommandProcessor {
   private static final Logger LOG = LoggerFactory.getLogger(SetProcessor.class);
 
   private static final String prefix = "set: ";
+  private static final Set<String> removedConfigs = Sets.newHashSet("hive.mapred.supports.subdirectories","hive.enforce.sorting","hive.enforce.bucketing", "hive.outerjoin.supports.filters");
 
   public static boolean getBoolean(String value) {
     if (value.equals("on") || value.equals("true")) {
@@ -175,7 +178,7 @@ public class SetProcessor implements CommandProcessor {
   /**
    * @return A console message that is not strong enough to fail the command (e.g. deprecation).
    */
-  private static String setConf(String varname, String key, String varvalue, boolean register)
+  static String setConf(String varname, String key, String varvalue, boolean register)
         throws IllegalArgumentException {
     String result = null;
     HiveConf conf = SessionState.get().getConf();
@@ -202,7 +205,7 @@ public class SetProcessor implements CommandProcessor {
           message.append("' FAILED in validation : ").append(fail).append('.');
           throw new IllegalArgumentException(message.toString());
         }
-      } else if (key.startsWith("hive.")) {
+      } else if (!removedConfigs.contains(key) && key.startsWith("hive.")) {
         throw new IllegalArgumentException("hive configuration " + key + " does not exists.");
       }
     }

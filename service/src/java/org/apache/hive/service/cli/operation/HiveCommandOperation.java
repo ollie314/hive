@@ -173,10 +173,10 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
       resetResultReader();
     }
     List<String> rows = readResults((int) maxRows);
-    RowSet rowSet = RowSetFactory.create(resultSchema, getProtocolVersion());
+    RowSet rowSet = RowSetFactory.create(resultSchema, getProtocolVersion(), false);
 
     for (String row : rows) {
-      rowSet.addRow(new String[] {row});
+      rowSet.addRow(new String[] { row });
     }
     return rowSet;
   }
@@ -228,5 +228,10 @@ public class HiveCommandOperation extends ExecuteStatementOperation {
       ServiceUtils.cleanup(LOG, resultReader);
       resultReader = null;
     }
+  }
+
+  @Override
+  public void cancel(OperationState stateAfterCancel) throws HiveSQLException {
+    throw new UnsupportedOperationException("HiveCommandOperation.cancel()");
   }
 }

@@ -28,11 +28,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
+import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.exec.mr.ExecMapperContext;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
@@ -43,6 +48,9 @@ import org.apache.hadoop.hive.ql.plan.OpTraits;
 import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.Statistics;
 import org.apache.hadoop.hive.ql.plan.api.OperatorType;
+import org.apache.hadoop.hive.ql.stats.StatsCollectionContext;
+import org.apache.hadoop.hive.ql.stats.StatsPublisher;
+import org.apache.hadoop.hive.ql.stats.fs.FSStatsPublisher;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
@@ -71,9 +79,12 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
   protected List<Operator<? extends OperatorDesc>> childOperators;
   protected List<Operator<? extends OperatorDesc>> parentOperators;
   protected String operatorId;
-  protected AtomicBoolean abortOp;
+  protected final AtomicBoolean abortOp;
   private transient ExecMapperContext execContext;
   private transient boolean rootInitializeCalled = false;
+  protected transient long runTimeNumRows;
+  protected int indexForTezUnion = -1;
+  private transient Configuration hconf;
   protected final transient Collection<Future<?>> asyncInitOperations = new HashSet<>();
 
   // It can be optimized later so that an operator operator (init/close) is performed
@@ -390,29 +401,67 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
     Object[] os = new Object[fs.size()];
     int i = 0;
     Throwable asyncEx = null;
+
+    // Wait for all futures to complete. Check for an abort while waiting for each future. If any of the futures is cancelled / aborted - cancel all subsequent futures.
+
+    boolean cancelAll = false;
     for (Future<?> f : fs) {
-      if (abortOp.get() || asyncEx != null) {
-        // We were aborted, interrupted or one of the operations failed; terminate all.
-        f.cancel(true);
+      // If aborted - break out of the loop, and cancel all subsequent futures.
+      if (cancelAll) {
+        break;
+      }
+      if (abortOp.get()) {
+        cancelAll = true;
+        break;
       } else {
-        try {
-          os[i++] = f.get();
-        } catch (CancellationException ex) {
-          asyncEx = new InterruptedException("Future was canceled");
-        } catch (Throwable t) {
-          f.cancel(true);
-          asyncEx = t;
+        // Wait for the current future.
+        while (true) {
+          if (abortOp.get()) {
+            cancelAll = true;
+            break;
+          } else {
+            try {
+              // Await future result with a timeout to check the abort field occasionally.
+              // It's possible that the interrupt which comes in along with an abort, is suppressed
+              // by some other operator.
+              Object futureResult = f.get(200l, TimeUnit.MILLISECONDS);
+              os[i++] = futureResult;
+              break;
+            } catch (TimeoutException e) {
+              // Expected if the operation takes time. Continue the loop, and wait for op completion.
+            } catch (InterruptedException | CancellationException e) {
+              asyncEx = e;
+              cancelAll = true;
+              break;
+            } catch (ExecutionException e) {
+              if (e.getCause() == null) {
+                asyncEx = e;
+              } else {
+                asyncEx = e.getCause();
+              }
+              cancelAll = true;
+              break;
+            }
+          }
         }
+
       }
     }
-    if (asyncEx != null) {
-      throw new HiveException("Async initialization failed", asyncEx);
+
+    if (cancelAll || asyncEx != null) {
+      for (Future<?> f : fs) {
+        // It's ok to send a cancel to an already completed future. Is a no-op
+        f.cancel(true);
+      }
+      throw new HiveException("Async Initialization failed. abortRequested=" + abortOp.get(), asyncEx);
     }
+
+
     completeInitializationOp(os);
   }
 
   /**
-   * This metod can be used to retrieve the results from async operations
+   * This method can be used to retrieve the results from async operations
    * started at init time - before the operator pipeline is started.
    *
    * @param os
@@ -435,7 +484,9 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
    * Operator specific initialization.
    */
   protected void initializeOp(Configuration hconf) throws HiveException {
+    this.hconf = hconf;
     rootInitializeCalled = true;
+    runTimeNumRows = 0;
   }
 
   /**
@@ -462,6 +513,7 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
   }
 
   public void abort() {
+    LOG.info("Received abort in operator: {}", getName());
     abortOp.set(true);
   }
 
@@ -659,7 +711,7 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
         LOG.debug(id + " Close done");
       }
     } catch (HiveException e) {
-      e.printStackTrace();
+      LOG.warn("Caught exception while closing operator: " + e.getMessage(), e);
       throw e;
     }
   }
@@ -669,6 +721,10 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
    * should overwrite this funtion for their specific cleanup routine.
    */
   protected void closeOp(boolean abort) throws HiveException {
+    if (conf != null && conf.getRuntimeStatsTmpDir() != null) {
+      publishRunTimeStats();
+    }
+    runTimeNumRows = 0;
   }
 
   private boolean jobCloseDone = false;
@@ -823,7 +879,7 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
 
   protected void forward(Object row, ObjectInspector rowInspector)
       throws HiveException {
-
+    runTimeNumRows++;
     if (getDone()) {
       return;
     }
@@ -1378,5 +1434,39 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
   /** @return Compilation operator context. Only available during compilation. */
   public CompilationOpContext getCompilationOpContext() {
     return cContext;
+  }
+
+  private void publishRunTimeStats() throws HiveException {
+    StatsPublisher statsPublisher = new FSStatsPublisher();
+    StatsCollectionContext sContext = new StatsCollectionContext(hconf);
+    sContext.setIndexForTezUnion(indexForTezUnion);
+    sContext.setStatsTmpDir(conf.getRuntimeStatsTmpDir());
+
+    if (!statsPublisher.connect(sContext)) {
+      LOG.error("StatsPublishing error: cannot connect to database");
+      throw new HiveException(ErrorMsg.STATSPUBLISHER_CONNECTION_ERROR.getErrorCodedMsg());
+    }
+
+    String prefix = "";
+    Map<String, String> statsToPublish = new HashMap<String, String>();
+    statsToPublish.put(StatsSetupConst.RUN_TIME_ROW_COUNT, Long.toString(runTimeNumRows));
+    if (!statsPublisher.publishStat(prefix, statsToPublish)) {
+      // The original exception is lost.
+      // Not changing the interface to maintain backward compatibility
+      throw new HiveException(ErrorMsg.STATSPUBLISHER_PUBLISHING_ERROR.getErrorCodedMsg());
+    }
+    if (!statsPublisher.closeConnection(sContext)) {
+      // The original exception is lost.
+      // Not changing the interface to maintain backward compatibility
+      throw new HiveException(ErrorMsg.STATSPUBLISHER_CLOSING_ERROR.getErrorCodedMsg());
+    }
+  }
+
+  public int getIndexForTezUnion() {
+    return indexForTezUnion;
+  }
+
+  public void setIndexForTezUnion(int indexForTezUnion) {
+    this.indexForTezUnion = indexForTezUnion;
   }
 }

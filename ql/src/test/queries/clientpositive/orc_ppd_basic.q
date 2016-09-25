@@ -1,3 +1,4 @@
+set hive.compute.query.using.stats=false;
 set hive.mapred.mode=nonstrict;
 SET hive.fetch.task.conversion=none;
 SET hive.optimize.index.filter=true;
@@ -176,3 +177,15 @@ select count(*) from orc_ppd where s = "wendy king" and t < 0;
 
 -- INPUT_RECORDS: 100
 select count(*) from orc_ppd where s = "wendy king" and t > 100;
+
+set hive.optimize.index.filter=false;
+-- when cbo is disabled constant gets converted to HiveDecimal
+select count(*) from orc_ppd where f=74.72;
+set hive.optimize.index.filter=true;
+select count(*) from orc_ppd where f=74.72;
+
+set hive.cbo.enable=true;
+set hive.optimize.index.filter=false;
+select count(*) from orc_ppd where f=74.72;
+set hive.optimize.index.filter=true;
+select count(*) from orc_ppd where f=74.72;

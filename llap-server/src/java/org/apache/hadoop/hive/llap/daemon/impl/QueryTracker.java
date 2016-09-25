@@ -14,12 +14,19 @@
 
 package org.apache.hadoop.hive.llap.daemon.impl;
 
+import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.llap.log.Log4jQueryCompleteMarker;
+import org.apache.hadoop.hive.llap.log.LogHelpers;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
+import org.apache.log4j.MDC;
+import org.apache.logging.slf4j.Log4jMarker;
 import org.apache.tez.common.CallableWithNdc;
 
 import org.apache.hadoop.service.AbstractService;
@@ -27,13 +34,15 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.FragmentSpecProto;
+import org.apache.hadoop.hive.llap.daemon.impl.LlapTokenChecker.LlapTokenInfo;
+import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SignableVertexSpec;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateProto;
 import org.apache.hadoop.hive.llap.shufflehandler.ShuffleHandler;
 import org.apache.hadoop.hive.ql.exec.ObjectCacheFactory;
 import org.apache.tez.common.security.JobTokenIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -53,14 +62,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class QueryTracker extends AbstractService {
 
   private static final Logger LOG = LoggerFactory.getLogger(QueryTracker.class);
+  private static final Marker QUERY_COMPLETE_MARKER = new Log4jMarker(new Log4jQueryCompleteMarker());
 
   private final ScheduledExecutorService executorService;
 
   private final ConcurrentHashMap<QueryIdentifier, QueryInfo> queryInfoMap = new ConcurrentHashMap<>();
 
+
+
   private final String[] localDirsBase;
   private final FileSystem localFs;
+  private final String clusterId;
   private final long defaultDeleteDelaySeconds;
+  private final boolean routeBasedLoggingEnabled;
 
   // TODO At the moment there's no way of knowing whether a query is running or not.
   // A race is possible between dagComplete and registerFragment - where the registerFragment
@@ -89,9 +103,10 @@ public class QueryTracker extends AbstractService {
   private final ConcurrentHashMap<QueryIdentifier, String> queryIdentifierToHiveQueryId =
       new ConcurrentHashMap<>();
 
-  public QueryTracker(Configuration conf, String[] localDirsBase) {
+  public QueryTracker(Configuration conf, String[] localDirsBase, String clusterId) {
     super("QueryTracker");
     this.localDirsBase = localDirsBase;
+    this.clusterId = clusterId;
     try {
       localFs = FileSystem.getLocal(conf);
     } catch (IOException e) {
@@ -105,49 +120,76 @@ public class QueryTracker extends AbstractService {
         conf, ConfVars.LLAP_DAEMON_NUM_FILE_CLEANER_THREADS);
     this.executorService = Executors.newScheduledThreadPool(numCleanerThreads,
         new ThreadFactoryBuilder().setDaemon(true).setNameFormat("QueryFileCleaner %d").build());
+
+    String logger = HiveConf.getVar(conf, ConfVars.LLAP_DAEMON_LOGGER);
+    if (logger != null && (logger.equalsIgnoreCase(LogHelpers.LLAP_LOGGER_NAME_QUERY_ROUTING))) {
+      routeBasedLoggingEnabled = true;
+    } else {
+      routeBasedLoggingEnabled = false;
+    }
+    LOG.info(
+        "QueryTracker setup with numCleanerThreads={}, defaultCleanupDelay(s)={}, routeBasedLogging={}",
+        numCleanerThreads, defaultDeleteDelaySeconds, routeBasedLoggingEnabled);
   }
 
   /**
    * Register a new fragment for a specific query
-   * @param queryIdentifier
-   * @param appIdString
-   * @param dagName
-   * @param dagIdentifier
-   * @param vertexName
-   * @param fragmentNumber
-   * @param attemptNumber
-   * @param user
-   * @throws IOException
    */
-  QueryFragmentInfo registerFragment(QueryIdentifier queryIdentifier, String appIdString, String dagName,
-                                     int dagIdentifier, String vertexName, int fragmentNumber, int attemptNumber, String user,
-                                     FragmentSpecProto fragmentSpec, Token<JobTokenIdentifier> appToken) throws IOException {
+  QueryFragmentInfo registerFragment(QueryIdentifier queryIdentifier, String appIdString, String dagIdString,
+      String dagName, String hiveQueryIdString, int dagIdentifier, String vertexName, int fragmentNumber, int attemptNumber,
+      String user, SignableVertexSpec vertex, Token<JobTokenIdentifier> appToken,
+      String fragmentIdString, LlapTokenInfo tokenInfo) throws IOException {
+
     ReadWriteLock dagLock = getDagLock(queryIdentifier);
     dagLock.readLock().lock();
     try {
-      if (!completedDagMap.contains(queryIdentifier)) {
-        QueryInfo queryInfo = queryInfoMap.get(queryIdentifier);
-        if (queryInfo == null) {
-          queryInfo = new QueryInfo(queryIdentifier, appIdString, dagName, dagIdentifier, user,
-              getSourceCompletionMap(queryIdentifier), localDirsBase, localFs);
-          queryInfoMap.putIfAbsent(queryIdentifier, queryInfo);
-        }
-
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Registering request for {} with the ShuffleHandler", queryIdentifier);
-        }
-        ShuffleHandler.get()
-            .registerDag(appIdString, dagIdentifier, appToken,
-                user, queryInfo.getLocalDirs());
-
-        return queryInfo.registerFragment(vertexName, fragmentNumber, attemptNumber, fragmentSpec);
-      } else {
+      if (completedDagMap.contains(queryIdentifier)) {
         // Cleanup the dag lock here, since it may have been created after the query completed
         dagSpecificLocks.remove(queryIdentifier);
         throw new RuntimeException(
             "Dag " + dagName + " already complete. Rejecting fragment ["
                 + vertexName + ", " + fragmentNumber + ", " + attemptNumber + "]");
       }
+      // TODO: for now, we get the secure username out of UGI... after signing, we can take it
+      //       out of the request provided that it's signed.
+      if (tokenInfo == null) {
+        tokenInfo = LlapTokenChecker.getTokenInfo(clusterId);
+      }
+      boolean isExistingQueryInfo = true;
+      QueryInfo queryInfo = queryInfoMap.get(queryIdentifier);
+      if (queryInfo == null) {
+        if (UserGroupInformation.isSecurityEnabled()) {
+          Preconditions.checkNotNull(tokenInfo.userName);
+        }
+        queryInfo =
+            new QueryInfo(queryIdentifier, appIdString, dagIdString, dagName, hiveQueryIdString,
+                dagIdentifier, user,
+                getSourceCompletionMap(queryIdentifier), localDirsBase, localFs,
+                tokenInfo.userName, tokenInfo.appId);
+        QueryInfo old = queryInfoMap.putIfAbsent(queryIdentifier, queryInfo);
+        if (old != null) {
+          queryInfo = old;
+        } else {
+          isExistingQueryInfo = false;
+        }
+      }
+      if (isExistingQueryInfo) {
+        // We already retrieved the incoming info, check without UGI.
+        LlapTokenChecker.checkPermissions(tokenInfo, queryInfo.getTokenUserName(),
+            queryInfo.getTokenAppId(), queryInfo.getQueryIdentifier());
+      }
+
+      queryIdentifierToHiveQueryId.putIfAbsent(queryIdentifier, hiveQueryIdString);
+
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Registering request for {} with the ShuffleHandler", queryIdentifier);
+      }
+      ShuffleHandler.get()
+          .registerDag(appIdString, dagIdentifier, appToken,
+              user, queryInfo.getLocalDirs());
+
+      return queryInfo.registerFragment(
+          vertexName, fragmentNumber, attemptNumber, vertex, fragmentIdString);
     } finally {
       dagLock.readLock().unlock();
     }
@@ -174,17 +216,20 @@ public class QueryTracker extends AbstractService {
    * @param queryIdentifier
    * @param deleteDelay
    */
-  List<QueryFragmentInfo> queryComplete(QueryIdentifier queryIdentifier, long deleteDelay) {
+  List<QueryFragmentInfo> queryComplete(QueryIdentifier queryIdentifier, long deleteDelay,
+      boolean isInternal) throws IOException {
     if (deleteDelay == -1) {
       deleteDelay = defaultDeleteDelaySeconds;
     }
     ReadWriteLock dagLock = getDagLock(queryIdentifier);
     dagLock.writeLock().lock();
     try {
+      QueryInfo queryInfo = isInternal
+          ? queryInfoMap.get(queryIdentifier) : checkPermissionsAndGetQuery(queryIdentifier);
       rememberCompletedDag(queryIdentifier);
       LOG.info("Processing queryComplete for queryIdentifier={} with deleteDelay={} seconds", queryIdentifier,
           deleteDelay);
-      QueryInfo queryInfo = queryInfoMap.remove(queryIdentifier);
+      queryInfoMap.remove(queryIdentifier);
       if (queryInfo == null) {
         LOG.warn("Ignoring query complete for unknown dag: {}", queryIdentifier);
         return Collections.emptyList();
@@ -196,6 +241,24 @@ public class QueryTracker extends AbstractService {
           ShuffleHandler.get().unregisterDag(localDir, queryInfo.getAppIdString(), queryInfo.getDagIdentifier());
         }
       }
+
+      if (routeBasedLoggingEnabled) {
+        // Inform the routing purgePolicy.
+        // Send out a fake log message at the ERROR level with the MDC for this query setup. With an
+        // LLAP custom appender this message will not be logged.
+        final String dagId = queryInfo.getDagIdString();
+        final String queryId = queryInfo.getHiveQueryIdString();
+        MDC.put("dagId", dagId);
+        MDC.put("queryId", queryId);
+        try {
+          LOG.error(QUERY_COMPLETE_MARKER, "Ignore this. Log line to interact with logger." +
+              " Query complete: " + queryInfo.getHiveQueryIdString() + ", " +
+              queryInfo.getDagIdString());
+        } finally {
+          MDC.clear();
+        }
+      }
+
       // Clearing this before sending a kill is OK, since canFinish will change to false.
       // Ideally this should be a state machine where kills are issued to the executor,
       // and the structures are cleaned up once all tasks complete. New requests, however,
@@ -229,9 +292,10 @@ public class QueryTracker extends AbstractService {
    * @param sourceName
    * @param sourceState
    */
-  void registerSourceStateChange(QueryIdentifier queryIdentifier, String sourceName, SourceStateProto sourceState) {
+  void registerSourceStateChange(QueryIdentifier queryIdentifier, String sourceName,
+      SourceStateProto sourceState) throws IOException {
     getSourceCompletionMap(queryIdentifier).put(sourceName, sourceState);
-    QueryInfo queryInfo = queryInfoMap.get(queryIdentifier);
+    QueryInfo queryInfo = checkPermissionsAndGetQuery(queryIdentifier);
     if (queryInfo != null) {
       queryInfo.sourceStateUpdated(sourceName);
     } else {
@@ -264,11 +328,6 @@ public class QueryTracker extends AbstractService {
       dagMap = (old != null) ? old : dagMap;
     }
     return dagMap;
-  }
-
-  public void registerDagQueryId(QueryIdentifier queryIdentifier, String hiveQueryIdString) {
-    if (hiveQueryIdString == null) return;
-    queryIdentifierToHiveQueryId.putIfAbsent(queryIdentifier, hiveQueryIdString);
   }
 
   @Override
@@ -321,5 +380,17 @@ public class QueryTracker extends AbstractService {
       completedDagMap.remove(queryIdentifier);
       return null;
     }
+  }
+
+  private QueryInfo checkPermissionsAndGetQuery(QueryIdentifier queryId) throws IOException {
+    QueryInfo queryInfo = queryInfoMap.get(queryId);
+    if (queryInfo == null) return null;
+    LlapTokenChecker.checkPermissions(clusterId, queryInfo.getTokenUserName(),
+        queryInfo.getTokenAppId(), queryInfo.getQueryIdentifier());
+    return queryInfo;
+  }
+
+  public boolean checkPermissionsForQuery(QueryIdentifier queryId) throws IOException {
+    return checkPermissionsAndGetQuery(queryId) != null;
   }
 }

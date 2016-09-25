@@ -126,17 +126,27 @@ public class RetryingThriftCLIServiceClient implements InvocationHandler {
     }
 
     @Override
-    public OperationHandle executeStatement(SessionHandle sessionHandle,
-                                            String statement,
-                                            Map<String, String> confOverlay) throws HiveSQLException {
+    public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
+        Map<String, String> confOverlay) throws HiveSQLException {
       return cliService.executeStatement(sessionHandle, statement, confOverlay);
     }
 
     @Override
-    public OperationHandle executeStatementAsync(SessionHandle sessionHandle,
-                                                 String statement,
-                                                 Map<String, String> confOverlay) throws HiveSQLException {
+    public OperationHandle executeStatement(SessionHandle sessionHandle, String statement,
+        Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+      return cliService.executeStatement(sessionHandle, statement, confOverlay, queryTimeout);
+    }
+
+    @Override
+    public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+        Map<String, String> confOverlay) throws HiveSQLException {
       return cliService.executeStatementAsync(sessionHandle, statement, confOverlay);
+    }
+
+    @Override
+    public OperationHandle executeStatementAsync(SessionHandle sessionHandle, String statement,
+        Map<String, String> confOverlay, long queryTimeout) throws HiveSQLException {
+      return cliService.executeStatementAsync(sessionHandle, statement, confOverlay, queryTimeout);
     }
 
     @Override
@@ -206,6 +216,22 @@ public class RetryingThriftCLIServiceClient implements InvocationHandler {
 
     public void closeTransport() {
       tTransport.close();
+    }
+
+    @Override
+    public OperationHandle getPrimaryKeys(SessionHandle sessionHandle,
+      String catalog, String schema, String table)
+      throws HiveSQLException {
+      return cliService.getPrimaryKeys(sessionHandle, catalog, schema, table);
+    }
+
+    @Override
+    public OperationHandle getCrossReference(SessionHandle sessionHandle,
+      String primaryCatalog, String primarySchema, String primaryTable,
+      String foreignCatalog, String foreignSchema, String foreignTable)
+      throws HiveSQLException {
+      return cliService.getCrossReference(sessionHandle, primaryCatalog, primarySchema,
+        primaryTable, foreignCatalog, foreignSchema, foreignTable);
     }
   }
 

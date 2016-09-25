@@ -78,7 +78,10 @@ public enum HiveOperation {
   CREATEMACRO("CREATEMACRO", null, null),
   DROPMACRO("DROPMACRO", null, null),
   CREATEVIEW("CREATEVIEW", new Privilege[]{Privilege.SELECT}, new Privilege[]{Privilege.CREATE}),
+  CREATE_MATERIALIZED_VIEW("CREATE_MATERIALIZED_VIEW", new Privilege[]{Privilege.SELECT}, new
+      Privilege[]{Privilege.CREATE}),
   DROPVIEW("DROPVIEW", null, new Privilege[]{Privilege.DROP}),
+  DROP_MATERIALIZED_VIEW("DROP_MATERIALIZED_VIEW", null, new Privilege[]{Privilege.DROP}),
   CREATEINDEX("CREATEINDEX", null, null),
   DROPINDEX("DROPINDEX", null, null),
   ALTERINDEX_REBUILD("ALTERINDEX_REBUILD", null, null),
@@ -114,7 +117,13 @@ public enum HiveOperation {
   ALTERTBLPART_SKEWED_LOCATION("ALTERTBLPART_SKEWED_LOCATION",
       new Privilege[] {Privilege.ALTER_DATA}, null),
   ALTERTABLE_PARTCOLTYPE("ALTERTABLE_PARTCOLTYPE", new Privilege[] { Privilege.SELECT }, new Privilege[] { Privilege.ALTER_DATA }),
-  ALTERTABLE_EXCHANGEPARTITION("ALTERTABLE_EXCHANGEPARTITION", null, null),
+  ALTERTABLE_EXCHANGEPARTITION(
+      "ALTERTABLE_EXCHANGEPARTITION", new Privilege[] { Privilege.SELECT, Privilege.DELETE },
+      new Privilege[] { Privilege.INSERT }),
+  ALTERTABLE_DROPCONSTRAINT("ALTERTABLE_DROPCONSTRAINT",
+      new Privilege[]{Privilege.ALTER_METADATA}, null),
+  ALTERTABLE_ADDCONSTRAINT("ALTERTABLE_ADDCONSTRAINT",
+      new Privilege[]{Privilege.ALTER_METADATA}, null),
   ALTERVIEW_RENAME("ALTERVIEW_RENAME", new Privilege[] {Privilege.ALTER_METADATA}, null),
   ALTERVIEW_AS("ALTERVIEW_AS", new Privilege[] {Privilege.ALTER_METADATA}, null),
   ALTERTABLE_COMPACT("ALTERTABLE_COMPACT", new Privilege[]{Privilege.SELECT}, new Privilege[]{Privilege.ALTER_DATA}),
@@ -123,8 +132,8 @@ public enum HiveOperation {
   START_TRANSACTION("START TRANSACTION", null, null, false, false),
   COMMIT("COMMIT", null, null, true, true),
   ROLLBACK("ROLLBACK", null, null, true, true),
-  SET_AUTOCOMMIT("SET AUTOCOMMIT", null, null, true, false);
-  ;
+  SET_AUTOCOMMIT("SET AUTOCOMMIT", null, null, true, false),
+  ABORT_TRANSACTIONS("ABORT TRANSACTIONS", null, null, false, false);
 
   private String operationName;
 

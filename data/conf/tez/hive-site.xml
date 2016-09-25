@@ -79,6 +79,11 @@
 </property>
 
 <property>
+  <name>hive.metastore.schema.verification</name>
+  <value>false</value>
+</property>
+
+<property>
   <name>javax.jdo.option.ConnectionDriverName</name>
   <value>org.apache.derby.jdbc.EmbeddedDriver</value>
 </property>
@@ -213,6 +218,12 @@
 </property>
 
 <property>
+  <name>hive.stats.fetch.column.stats</name>
+  <value>true</value>
+  <description>Use column stats to annotate stats for physical optimization phase</description>
+</property>
+
+<property>
   <name>hive.execution.engine</name>
   <value>tez</value>
   <description>Whether to use MR or Tez</description>
@@ -255,16 +266,6 @@
 <property>
   <name>tez.am.launch.cmd-opts</name>
   <value> -Dlog4j.configurationFile=tez-container-log4j2.properties -Dtez.container.log.level=INFO -Dtez.container.root.logger=CLA </value>
-</property>
-
-<property>
-  <name>hive.metastore.fastpath</name>
-  <value>true</value>
-</property>
-
-<property>
-  <name>hive.metastore.rawstore.impl</name>
-  <value>org.apache.hadoop.hive.metastore.hbase.HBaseStore</value>
 </property>
 
 <property>

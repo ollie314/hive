@@ -19,6 +19,9 @@
 package org.apache.hadoop.hive.ql.parse;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,8 +29,10 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.QueryProperties;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.AbstractMapJoinOperator;
 import org.apache.hadoop.hive.ql.exec.FetchTask;
 import org.apache.hadoop.hive.ql.exec.JoinOperator;
@@ -46,7 +51,9 @@ import org.apache.hadoop.hive.ql.optimizer.ppr.PartitionPruner;
 import org.apache.hadoop.hive.ql.optimizer.unionproc.UnionProcContext;
 import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer.AnalyzeRewriteContext;
 import org.apache.hadoop.hive.ql.plan.CreateTableDesc;
+import org.apache.hadoop.hive.ql.plan.CreateViewDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.FileSinkDesc;
 import org.apache.hadoop.hive.ql.plan.FilterDesc.SampleDesc;
 import org.apache.hadoop.hive.ql.plan.LoadFileDesc;
 import org.apache.hadoop.hive.ql.plan.LoadTableDesc;
@@ -77,7 +84,9 @@ public class ParseContext {
   private HashMap<String, SplitSample> nameToSplitSample;
   private List<LoadTableDesc> loadTableWork;
   private List<LoadFileDesc> loadFileWork;
+  private List<ColumnStatsAutoGatherContext> columnStatsAutoGatherContexts;
   private Context ctx;
+  private QueryState queryState;
   private HiveConf conf;
   private HashMap<String, String> idToTableNameMap;
   private int destTableId;
@@ -108,31 +117,28 @@ public class ParseContext {
 
   private AnalyzeRewriteContext analyzeRewrite;
   private CreateTableDesc createTableDesc;
+  private CreateViewDesc createViewDesc;
   private boolean reduceSinkAddedBySortedDynPartition;
 
   private Map<SelectOperator, Table> viewProjectToViewSchema;  
   private ColumnAccessInfo columnAccessInfo;
   private boolean needViewColumnAuthorization;
+  private Set<FileSinkDesc> acidFileSinks = Collections.emptySet();
+
 
   public ParseContext() {
   }
 
   /**
    * @param conf
-   * @param qb
-   *          current QB
-   * @param ast
-   *          current parse tree
    * @param opToPartPruner
    *          map from table scan operator to partition pruner
    * @param opToPartList
    * @param topOps
    *          list of operators for the top query
-   * @param opParseCtx
-   *          operator parse context - contains a mapping from operator to
-   *          operator parse state (row resolver etc.)
    * @param joinOps
    *          context needed join processing (map join specifically)
+   * @param smbMapJoinOps
    * @param loadTableWork
    *          list of destination tables being loaded
    * @param loadFileWork
@@ -144,22 +150,29 @@ public class ParseContext {
    * @param destTableId
    * @param listMapJoinOpsNoReducer
    *          list of map join operators with no reducer
-   * @param groupOpToInputTables
    * @param prunedPartitions
    * @param opToSamplePruner
    *          operator to sample pruner map
    * @param globalLimitCtx
    * @param nameToSplitSample
    * @param rootTasks
+   * @param opToPartToSkewedPruner
+   * @param viewAliasToInput
+   * @param reduceSinkOperatorsAddedByEnforceBucketingSorting
+   * @param analyzeRewrite
+   * @param createTableDesc
+   * @param createViewDesc
+   * @param queryProperties
    */
   public ParseContext(
-      HiveConf conf,
+      QueryState queryState,
       HashMap<TableScanOperator, ExprNodeDesc> opToPartPruner,
       HashMap<TableScanOperator, PrunedPartitionList> opToPartList,
       HashMap<String, TableScanOperator> topOps,
       Set<JoinOperator> joinOps,
       Set<SMBMapJoinOperator> smbMapJoinOps,
       List<LoadTableDesc> loadTableWork, List<LoadFileDesc> loadFileWork,
+      List<ColumnStatsAutoGatherContext> columnStatsAutoGatherContexts,
       Context ctx, HashMap<String, String> idToTableNameMap, int destTableId,
       UnionProcContext uCtx, List<AbstractMapJoinOperator<? extends MapJoinDesc>> listMapJoinOpsNoReducer,
       Map<String, PrunedPartitionList> prunedPartitions,
@@ -172,14 +185,17 @@ public class ParseContext {
       Map<String, ReadEntity> viewAliasToInput,
       List<ReduceSinkOperator> reduceSinkOperatorsAddedByEnforceBucketingSorting,
       AnalyzeRewriteContext analyzeRewrite, CreateTableDesc createTableDesc,
-      QueryProperties queryProperties, Map<SelectOperator, Table> viewProjectToTableSchema) {
-    this.conf = conf;
+      CreateViewDesc createViewDesc, QueryProperties queryProperties,
+      Map<SelectOperator, Table> viewProjectToTableSchema, Set<FileSinkDesc> acidFileSinks) {
+    this.queryState = queryState;
+    this.conf = queryState.getConf();
     this.opToPartPruner = opToPartPruner;
     this.opToPartList = opToPartList;
     this.joinOps = joinOps;
     this.smbMapJoinOps = smbMapJoinOps;
     this.loadFileWork = loadFileWork;
     this.loadTableWork = loadTableWork;
+    this.columnStatsAutoGatherContexts = columnStatsAutoGatherContexts;
     this.topOps = topOps;
     this.ctx = ctx;
     this.idToTableNameMap = idToTableNameMap;
@@ -199,6 +215,7 @@ public class ParseContext {
         reduceSinkOperatorsAddedByEnforceBucketingSorting;
     this.analyzeRewrite = analyzeRewrite;
     this.createTableDesc = createTableDesc;
+    this.createViewDesc = createViewDesc;
     this.queryProperties = queryProperties;
     this.viewProjectToViewSchema = viewProjectToTableSchema;
     this.needViewColumnAuthorization = viewProjectToTableSchema != null
@@ -208,8 +225,17 @@ public class ParseContext {
       // authorization info.
       this.columnAccessInfo = new ColumnAccessInfo();
     }
+    if(acidFileSinks != null && !acidFileSinks.isEmpty()) {
+      this.acidFileSinks = new HashSet<>();
+      this.acidFileSinks.addAll(acidFileSinks);
+    }
   }
-
+  public Set<FileSinkDesc> getAcidSinks() {
+    return acidFileSinks;
+  }
+  public boolean hasAcidWrite() {
+    return !acidFileSinks.isEmpty();
+  }
   /**
    * @return the context
    */
@@ -238,6 +264,13 @@ public class ParseContext {
    */
   public void setConf(HiveConf conf) {
     this.conf = conf;
+  }
+
+  /**
+   * @return the hive conf
+   */
+  public QueryState getQueryState() {
+    return queryState;
   }
 
   /**
@@ -552,6 +585,10 @@ public class ParseContext {
     this.createTableDesc = createTableDesc;
   }
 
+  public CreateViewDesc getCreateViewDesc() {
+    return createViewDesc;
+  }
+
   public void setReduceSinkAddedBySortedDynPartition(
       final boolean reduceSinkAddedBySortedDynPartition) {
     this.reduceSinkAddedBySortedDynPartition = reduceSinkAddedBySortedDynPartition;
@@ -584,4 +621,35 @@ public class ParseContext {
   public Map<String, Table> getTabNameToTabObject() {
     return tabNameToTabObject;
   }
+
+  public List<ColumnStatsAutoGatherContext> getColumnStatsAutoGatherContexts() {
+    return columnStatsAutoGatherContexts;
+  }
+
+  public void setColumnStatsAutoGatherContexts(
+      List<ColumnStatsAutoGatherContext> columnStatsAutoGatherContexts) {
+    this.columnStatsAutoGatherContexts = columnStatsAutoGatherContexts;
+  }
+
+  public Collection<Operator> getAllOps() {
+    List<Operator> ops = new ArrayList<>();
+    Set<Operator> visited = new HashSet<Operator>();
+    for (Operator<?> op : getTopOps().values()) {
+      getAllOps(ops, visited, op);
+    }
+    return ops;
+  }
+
+  private static void getAllOps(List<Operator> builder, Set<Operator> visited, Operator<?> op) {
+    boolean added = visited.add(op);
+    builder.add(op);
+    if (!added) return;
+    if (op.getNumChild() > 0) {
+      List<Operator<?>> children = op.getChildOperators();
+      for (int i = 0; i < children.size(); i++) {
+        getAllOps(builder, visited, children.get(i));
+      }
+    }
+  }
+
 }

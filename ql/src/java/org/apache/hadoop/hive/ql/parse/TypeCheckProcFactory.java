@@ -52,18 +52,23 @@ import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
+import org.apache.hadoop.hive.ql.optimizer.ConstantPropagateProcFactory;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnListDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
 import org.apache.hadoop.hive.ql.plan.ExprNodeFieldDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.udf.SettableUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBaseCompare;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFNvl;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPAnd;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqual;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPNot;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPOr;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFWhen;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ConstantObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -169,10 +174,8 @@ public class TypeCheckProcFactory {
     opRules.put(new RuleRegExp("R1", HiveParser.TOK_NULL + "%"),
         tf.getNullExprProcessor());
     opRules.put(new RuleRegExp("R2", HiveParser.Number + "%|" +
-        HiveParser.TinyintLiteral + "%|" +
-        HiveParser.SmallintLiteral + "%|" +
-        HiveParser.BigintLiteral + "%|" +
-        HiveParser.DecimalLiteral + "%"),
+        HiveParser.IntegralLiteral + "%|" +
+        HiveParser.NumberLiteral + "%"),
         tf.getNumExprProcessor());
     opRules
         .put(new RuleRegExp("R3", HiveParser.Identifier + "%|"
@@ -283,6 +286,7 @@ public class TypeCheckProcFactory {
       }
 
       Number v = null;
+      ExprNodeConstantDesc decimalNode = null;
       ASTNode expr = (ASTNode) nd;
       // The expression can be any one of Double, Long and Integer. We
       // try to parse the expression in that order to ensure that the
@@ -290,41 +294,55 @@ public class TypeCheckProcFactory {
       try {
         if (expr.getText().endsWith("L")) {
           // Literal bigint.
-          v = Long.valueOf(expr.getText().substring(
-                0, expr.getText().length() - 1));
+          v = Long.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
         } else if (expr.getText().endsWith("S")) {
           // Literal smallint.
-          v = Short.valueOf(expr.getText().substring(
-                0, expr.getText().length() - 1));
+          v = Short.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
         } else if (expr.getText().endsWith("Y")) {
           // Literal tinyint.
-          v = Byte.valueOf(expr.getText().substring(
-                0, expr.getText().length() - 1));
+          v = Byte.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
         } else if (expr.getText().endsWith("BD")) {
           // Literal decimal
           String strVal = expr.getText().substring(0, expr.getText().length() - 2);
-          HiveDecimal hd = HiveDecimal.create(strVal);
-          int prec = 1;
-          int scale = 0;
-          if (hd != null) {
-            prec = hd.precision();
-            scale = hd.scale();
-          }
-          DecimalTypeInfo typeInfo = TypeInfoFactory.getDecimalTypeInfo(prec, scale);
-          return new ExprNodeConstantDesc(typeInfo, hd);
+          return createDecimal(strVal, false);
+        } else if (expr.getText().endsWith("D")) {
+          // Literal double.
+          v = Double.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
         } else {
           v = Double.valueOf(expr.getText());
+          if (expr.getText() != null && !expr.getText().toLowerCase().contains("e")) {
+            decimalNode = createDecimal(expr.getText(), true);
+            if (decimalNode != null) {
+              v = null; // We will use decimal if all else fails.
+            }
+          }
           v = Long.valueOf(expr.getText());
           v = Integer.valueOf(expr.getText());
         }
       } catch (NumberFormatException e) {
         // do nothing here, we will throw an exception in the following block
       }
-      if (v == null) {
-        throw new SemanticException(ErrorMsg.INVALID_NUMERICAL_CONSTANT
-            .getMsg(expr));
+      if (v == null && decimalNode == null) {
+        throw new SemanticException(ErrorMsg.INVALID_NUMERICAL_CONSTANT.getMsg(expr));
       }
-      return new ExprNodeConstantDesc(v);
+      return v != null ? new ExprNodeConstantDesc(v) : decimalNode;
+    }
+
+    public static ExprNodeConstantDesc createDecimal(String strVal, boolean notNull) {
+      // Note: the normalize() call with rounding in HiveDecimal will currently reduce the
+      //       precision and scale of the value by throwing away trailing zeroes. This may or may
+      //       not be desirable for the literals; however, this used to be the default behavior
+      //       for explicit decimal literals (e.g. 1.0BD), so we keep this behavior for now.
+      HiveDecimal hd = HiveDecimal.create(strVal);
+      if (notNull && hd == null) return null;
+      int prec = 1;
+      int scale = 0;
+      if (hd != null) {
+        prec = hd.precision();
+        scale = hd.scale();
+      }
+      DecimalTypeInfo typeInfo = TypeInfoFactory.getDecimalTypeInfo(prec, scale);
+      return new ExprNodeConstantDesc(typeInfo, hd);
     }
 
   }
@@ -1055,9 +1073,28 @@ public class TypeCheckProcFactory {
           }
           desc = ExprNodeGenericFuncDesc.newInstance(genericUDF, funcText,
               childrenList);
+        } else if (ctx.isFoldExpr() && canConvertIntoNvl(genericUDF, children)) {
+          // Rewrite CASE into NVL
+          desc = ExprNodeGenericFuncDesc.newInstance(new GenericUDFNvl(),
+                  Lists.newArrayList(children.get(0), new ExprNodeConstantDesc(false)));
+          if (Boolean.FALSE.equals(((ExprNodeConstantDesc) children.get(1)).getValue())) {
+            desc = ExprNodeGenericFuncDesc.newInstance(new GenericUDFOPNot(),
+                    Lists.newArrayList(desc));
+          }
         } else {
           desc = ExprNodeGenericFuncDesc.newInstance(genericUDF, funcText,
               children);
+        }
+
+        // If the function is deterministic and the children are constants,
+        // we try to fold the expression to remove e.g. cast on constant
+        if (ctx.isFoldExpr() && desc instanceof ExprNodeGenericFuncDesc &&
+                FunctionRegistry.isDeterministic(genericUDF) &&
+                ExprNodeDescUtils.isAllConstants(children)) {
+          ExprNodeDesc constantExpr = ConstantPropagateProcFactory.foldExpr((ExprNodeGenericFuncDesc)desc);
+          if (constantExpr != null) {
+            desc = constantExpr;
+          }
         }
       }
       // UDFOPPositive is a no-op.
@@ -1070,6 +1107,21 @@ public class TypeCheckProcFactory {
       }
       assert (desc != null);
       return desc;
+    }
+
+    private boolean canConvertIntoNvl(GenericUDF genericUDF, ArrayList<ExprNodeDesc> children) {
+      if (genericUDF instanceof GenericUDFWhen && children.size() == 3 &&
+              children.get(1) instanceof ExprNodeConstantDesc &&
+              children.get(2) instanceof ExprNodeConstantDesc) {
+        ExprNodeConstantDesc constThen = (ExprNodeConstantDesc) children.get(1);
+        ExprNodeConstantDesc constElse = (ExprNodeConstantDesc) children.get(2);
+        Object thenVal = constThen.getValue();
+        Object elseVal = constElse.getValue();
+        if (thenVal instanceof Boolean && elseVal instanceof Boolean) {
+          return true;
+        }
+      }
+      return false;
     }
 
     /**
@@ -1278,13 +1330,13 @@ public class TypeCheckProcFactory {
         return getXpathOrFuncExprNodeDesc(expr, isFunction, children, ctx);
       } catch (UDFArgumentTypeException e) {
         throw new SemanticException(ErrorMsg.INVALID_ARGUMENT_TYPE.getMsg(expr
-            .getChild(childrenBegin + e.getArgumentId()), e.getMessage()));
+            .getChild(childrenBegin + e.getArgumentId()), e.getMessage()), e);
       } catch (UDFArgumentLengthException e) {
         throw new SemanticException(ErrorMsg.INVALID_ARGUMENT_LENGTH.getMsg(
-            expr, e.getMessage()));
+            expr, e.getMessage()), e);
       } catch (UDFArgumentException e) {
         throw new SemanticException(ErrorMsg.INVALID_ARGUMENT.getMsg(expr, e
-            .getMessage()));
+            .getMessage()), e);
       }
     }
 

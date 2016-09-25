@@ -22,6 +22,7 @@ import junit.framework.Assert;
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.common.ValidReadTxnList;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.api.DataOperationType;
 import org.apache.hadoop.hive.metastore.api.HeartbeatTxnRangeResponse;
 import org.apache.hadoop.hive.metastore.api.LockResponse;
 import org.apache.hadoop.hive.metastore.api.LockState;
@@ -127,7 +128,7 @@ public class TestHiveMetaStoreTxns {
     Assert.assertEquals(ValidTxnList.RangeResponse.NONE,
         validTxns.isTxnRangeValid(5L, 10L));
 
-    validTxns = new ValidReadTxnList("10:4:5:6");
+    validTxns = new ValidReadTxnList("10:5:4:5:6");
     Assert.assertEquals(ValidTxnList.RangeResponse.NONE,
         validTxns.isTxnRangeValid(4,6));
     Assert.assertEquals(ValidTxnList.RangeResponse.ALL,
@@ -152,14 +153,17 @@ public class TestHiveMetaStoreTxns {
         .setTableName("mytable")
         .setPartitionName("mypartition")
         .setExclusive()
+        .setOperationType(DataOperationType.NO_TXN)
         .build());
     rqstBuilder.addLockComponent(new LockComponentBuilder()
         .setDbName("mydb")
         .setTableName("yourtable")
         .setSemiShared()
+        .setOperationType(DataOperationType.NO_TXN)
         .build());
     rqstBuilder.addLockComponent(new LockComponentBuilder()
         .setDbName("yourdb")
+        .setOperationType(DataOperationType.NO_TXN)
         .setShared()
         .build());
     rqstBuilder.setUser("fred");
@@ -187,16 +191,19 @@ public class TestHiveMetaStoreTxns {
         .setDbName("mydb")
         .setTableName("mytable")
         .setPartitionName("mypartition")
-        .setExclusive()
+        .setSemiShared()
+        .setOperationType(DataOperationType.UPDATE)
         .build())
       .addLockComponent(new LockComponentBuilder()
         .setDbName("mydb")
         .setTableName("yourtable")
         .setSemiShared()
+        .setOperationType(DataOperationType.UPDATE)
         .build())
       .addLockComponent(new LockComponentBuilder()
         .setDbName("yourdb")
         .setShared()
+        .setOperationType(DataOperationType.SELECT)
         .build())
       .setUser("fred");
 
@@ -216,24 +223,24 @@ public class TestHiveMetaStoreTxns {
   @Test
   public void stringifyValidTxns() throws Exception {
     // Test with just high water mark
-    ValidTxnList validTxns = new ValidReadTxnList("1:");
+    ValidTxnList validTxns = new ValidReadTxnList("1:" + Long.MAX_VALUE + ":");
     String asString = validTxns.toString();
-    Assert.assertEquals("1:", asString);
+    Assert.assertEquals("1:" + Long.MAX_VALUE + ":", asString);
     validTxns = new ValidReadTxnList(asString);
     Assert.assertEquals(1, validTxns.getHighWatermark());
     Assert.assertNotNull(validTxns.getInvalidTransactions());
     Assert.assertEquals(0, validTxns.getInvalidTransactions().length);
     asString = validTxns.toString();
-    Assert.assertEquals("1:", asString);
+    Assert.assertEquals("1:" + Long.MAX_VALUE + ":", asString);
     validTxns = new ValidReadTxnList(asString);
     Assert.assertEquals(1, validTxns.getHighWatermark());
     Assert.assertNotNull(validTxns.getInvalidTransactions());
     Assert.assertEquals(0, validTxns.getInvalidTransactions().length);
 
     // Test with open transactions
-    validTxns = new ValidReadTxnList("10:5:3");
+    validTxns = new ValidReadTxnList("10:3:5:3");
     asString = validTxns.toString();
-    if (!asString.equals("10:3:5") && !asString.equals("10:5:3")) {
+    if (!asString.equals("10:3:3:5") && !asString.equals("10:3:5:3")) {
       Assert.fail("Unexpected string value " + asString);
     }
     validTxns = new ValidReadTxnList(asString);

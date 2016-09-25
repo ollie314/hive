@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.ql.exec.vector.TimestampColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.UnionColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,12 +38,61 @@ import java.util.List;
 /**
  * This is the description of the types in an ORC file.
  */
-public class TypeDescription {
+public class TypeDescription
+    implements Comparable<TypeDescription>, Serializable {
   private static final int MAX_PRECISION = 38;
   private static final int MAX_SCALE = 38;
   private static final int DEFAULT_PRECISION = 38;
   private static final int DEFAULT_SCALE = 10;
   private static final int DEFAULT_LENGTH = 256;
+
+  @Override
+  public int compareTo(TypeDescription other) {
+    if (this == other) {
+      return 0;
+    } else if (other == null) {
+      return -1;
+    } else {
+      int result = category.compareTo(other.category);
+      if (result == 0) {
+        switch (category) {
+          case CHAR:
+          case VARCHAR:
+            return maxLength - other.maxLength;
+          case DECIMAL:
+            if (precision != other.precision) {
+              return precision - other.precision;
+            }
+            return scale - other.scale;
+          case UNION:
+          case LIST:
+          case MAP:
+            if (children.size() != other.children.size()) {
+              return children.size() - other.children.size();
+            }
+            for(int c=0; result == 0 && c < children.size(); ++c) {
+              result = children.get(c).compareTo(other.children.get(c));
+            }
+            break;
+          case STRUCT:
+            if (children.size() != other.children.size()) {
+              return children.size() - other.children.size();
+            }
+            for(int c=0; result == 0 && c < children.size(); ++c) {
+              result = fieldNames.get(c).compareTo(other.fieldNames.get(c));
+              if (result == 0) {
+                result = children.get(c).compareTo(other.children.get(c));
+              }
+            }
+            break;
+          default:
+            // PASS
+        }
+      }
+      return result;
+    }
+  }
+
   public enum Category {
     BOOLEAN("boolean", true),
     BYTE("tinyint", true),
@@ -61,7 +111,7 @@ public class TypeDescription {
     LIST("array", false),
     MAP("map", false),
     STRUCT("struct", false),
-    UNION("union", false);
+    UNION("uniontype", false);
 
     Category(String name, boolean isPrimitive) {
       this.name = name;
@@ -258,6 +308,70 @@ public class TypeDescription {
     return id;
   }
 
+  public TypeDescription clone() {
+    TypeDescription result = new TypeDescription(category);
+    result.maxLength = maxLength;
+    result.precision = precision;
+    result.scale = scale;
+    if (fieldNames != null) {
+      result.fieldNames.addAll(fieldNames);
+    }
+    if (children != null) {
+      for(TypeDescription child: children) {
+        TypeDescription clone = child.clone();
+        clone.parent = result;
+        result.children.add(clone);
+      }
+    }
+    return result;
+  }
+
+  @Override
+  public int hashCode() {
+    long result = category.ordinal() * 4241 + maxLength + precision * 13 + scale;
+    if (children != null) {
+      for(TypeDescription child: children) {
+        result = result * 6959 + child.hashCode();
+      }
+    }
+    return (int) result;
+  }
+
+  @Override
+  public boolean equals(Object other) {
+    if (other == null || !(other instanceof TypeDescription)) {
+      return false;
+    }
+    if (other == this) {
+      return true;
+    }
+    TypeDescription castOther = (TypeDescription) other;
+    if (category != castOther.category ||
+        maxLength != castOther.maxLength ||
+        scale != castOther.scale ||
+        precision != castOther.precision) {
+      return false;
+    }
+    if (children != null) {
+      if (children.size() != castOther.children.size()) {
+        return false;
+      }
+      for (int i = 0; i < children.size(); ++i) {
+        if (!children.get(i).equals(castOther.children.get(i))) {
+          return false;
+        }
+      }
+    }
+    if (category == Category.STRUCT) {
+      for(int i=0; i < fieldNames.size(); ++i) {
+        if (!fieldNames.get(i).equals(castOther.fieldNames.get(i))) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   /**
    * Get the maximum id assigned to this type or its children.
    * The first call will cause all of the the ids in tree to be assigned, so
@@ -284,25 +398,25 @@ public class TypeDescription {
       case INT:
       case LONG:
       case DATE:
-        return new LongColumnVector();
+        return new LongColumnVector(maxSize);
       case TIMESTAMP:
-        return new TimestampColumnVector();
+        return new TimestampColumnVector(maxSize);
       case FLOAT:
       case DOUBLE:
-        return new DoubleColumnVector();
+        return new DoubleColumnVector(maxSize);
       case DECIMAL:
-        return new DecimalColumnVector(precision, scale);
+        return new DecimalColumnVector(maxSize, precision, scale);
       case STRING:
       case BINARY:
       case CHAR:
       case VARCHAR:
-        return new BytesColumnVector();
+        return new BytesColumnVector(maxSize);
       case STRUCT: {
         ColumnVector[] fieldVector = new ColumnVector[children.size()];
         for(int i=0; i < fieldVector.length; ++i) {
           fieldVector[i] = children.get(i).createColumn(maxSize);
         }
-        return new StructColumnVector(VectorizedRowBatch.DEFAULT_SIZE,
+        return new StructColumnVector(maxSize,
                 fieldVector);
       }
       case UNION: {
@@ -310,14 +424,14 @@ public class TypeDescription {
         for(int i=0; i < fieldVector.length; ++i) {
           fieldVector[i] = children.get(i).createColumn(maxSize);
         }
-        return new UnionColumnVector(VectorizedRowBatch.DEFAULT_SIZE,
+        return new UnionColumnVector(maxSize,
             fieldVector);
       }
       case LIST:
-        return new ListColumnVector(VectorizedRowBatch.DEFAULT_SIZE,
+        return new ListColumnVector(maxSize,
             children.get(0).createColumn(maxSize));
       case MAP:
-        return new MapColumnVector(VectorizedRowBatch.DEFAULT_SIZE,
+        return new MapColumnVector(maxSize,
             children.get(0).createColumn(maxSize),
             children.get(1).createColumn(maxSize));
       default:

@@ -40,8 +40,10 @@ import org.apache.tez.common.counters.TezCounters;
 import org.apache.tez.dag.api.TezException;
 import org.apache.tez.dag.records.TezTaskAttemptID;
 import org.apache.tez.runtime.RuntimeTask;
+import org.apache.tez.runtime.api.TaskFailureType;
 import org.apache.tez.runtime.api.events.TaskAttemptCompletedEvent;
 import org.apache.tez.runtime.api.events.TaskAttemptFailedEvent;
+import org.apache.tez.runtime.api.events.TaskAttemptKilledEvent;
 import org.apache.tez.runtime.api.events.TaskStatusUpdateEvent;
 import org.apache.tez.runtime.api.impl.EventMetaData;
 import org.apache.tez.runtime.api.impl.EventMetaData.EventProducerConsumerType;
@@ -78,7 +80,8 @@ public class LlapTaskReporter implements TaskReporterInterface {
   private final int maxEventsToGet;
   private final AtomicLong requestCounter;
   private final String containerIdStr;
-  private final String fragmentFullId;
+  private final String fragmentId;
+  private final TezEvent initialEvent;
 
   private final ListeningExecutorService heartbeatExecutor;
 
@@ -87,14 +90,15 @@ public class LlapTaskReporter implements TaskReporterInterface {
 
   public LlapTaskReporter(LlapTaskUmbilicalProtocol umbilical, long amPollInterval,
                       long sendCounterInterval, int maxEventsToGet, AtomicLong requestCounter,
-      String containerIdStr, final String fragFullId) {
+      String containerIdStr, final String fragmentId, TezEvent initialEvent) {
     this.umbilical = umbilical;
     this.pollInterval = amPollInterval;
     this.sendCounterInterval = sendCounterInterval;
     this.maxEventsToGet = maxEventsToGet;
     this.requestCounter = requestCounter;
     this.containerIdStr = containerIdStr;
-    this.fragmentFullId = fragFullId;
+    this.fragmentId = fragmentId;
+    this.initialEvent = initialEvent;
     ExecutorService executor = Executors.newFixedThreadPool(1, new ThreadFactoryBuilder()
         .setDaemon(true).setNameFormat("TaskHeartbeatThread").build());
     heartbeatExecutor = MoreExecutors.listeningDecorator(executor);
@@ -106,11 +110,11 @@ public class LlapTaskReporter implements TaskReporterInterface {
   @Override
   public synchronized void registerTask(RuntimeTask task,
                                         ErrorReporter errorReporter) {
-    TezCounters tezCounters = task.addAndGetTezCounter(fragmentFullId);
-    FragmentCountersMap.registerCountersForFragment(fragmentFullId, tezCounters);
-    LOG.info("Registered counters for fragment: {} vertexName: {}", fragmentFullId, task.getVertexName());
+    TezCounters tezCounters = task.addAndGetTezCounter(fragmentId);
+    FragmentCountersMap.registerCountersForFragment(fragmentId, tezCounters);
+    LOG.info("Registered counters for fragment: {} vertexName: {}", fragmentId, task.getVertexName());
     currentCallable = new HeartbeatCallable(task, umbilical, pollInterval, sendCounterInterval,
-        maxEventsToGet, requestCounter, containerIdStr);
+        maxEventsToGet, requestCounter, containerIdStr, initialEvent);
     ListenableFuture<Boolean> future = heartbeatExecutor.submit(currentCallable);
     Futures.addCallback(future, new HeartbeatCallback(errorReporter));
   }
@@ -121,8 +125,8 @@ public class LlapTaskReporter implements TaskReporterInterface {
    */
   @Override
   public synchronized void unregisterTask(TezTaskAttemptID taskAttemptID) {
-    LOG.info("Unregistered counters for fragment: {}", fragmentFullId);
-    FragmentCountersMap.unregisterCountersForFragment(fragmentFullId);
+    LOG.info("Unregistered counters for fragment: {}", fragmentId);
+    FragmentCountersMap.unregisterCountersForFragment(fragmentId);
     currentCallable.markComplete();
     currentCallable = null;
   }
@@ -168,16 +172,18 @@ public class LlapTaskReporter implements TaskReporterInterface {
      * Tracks the last non-OOB heartbeat number at which counters were sent to the AM. 
      */
     private int prevCounterSendHeartbeatNum = 0;
+    private TezEvent initialEvent;
 
-    public HeartbeatCallable(RuntimeTask task,
-                             LlapTaskUmbilicalProtocol umbilical, long amPollInterval, long sendCounterInterval,
-                             int maxEventsToGet, AtomicLong requestCounter, String containerIdStr) {
+    public HeartbeatCallable(RuntimeTask task, LlapTaskUmbilicalProtocol umbilical,
+        long amPollInterval, long sendCounterInterval, int maxEventsToGet,
+        AtomicLong requestCounter, String containerIdStr, TezEvent initialEvent) {
 
       this.pollInterval = amPollInterval;
       this.sendCounterInterval = sendCounterInterval;
       this.maxEventsToGet = maxEventsToGet;
       this.requestCounter = requestCounter;
       this.containerIdStr = containerIdStr;
+      this.initialEvent = initialEvent;
 
       this.task = task;
       this.umbilical = umbilical;
@@ -192,7 +198,7 @@ public class LlapTaskReporter implements TaskReporterInterface {
     @Override
     public Boolean call() throws Exception {
       // Heartbeat only for active tasks. Errors, etc will be reported directly.
-      while (!task.isTaskDone() && !task.hadFatalError()) {
+      while (!task.isTaskDone() && !task.wasErrorReported()) {
         ResponseWrapper response = heartbeat(null);
 
         if (response.shouldDie) {
@@ -217,7 +223,7 @@ public class LlapTaskReporter implements TaskReporterInterface {
       int pendingEventCount = eventsToSend.size();
       if (pendingEventCount > 0) {
         // This is OK because the pending events will be sent via the succeeded/failed messages.
-        // TaskDone is set before taskSucceeded/taskFailed are sent out - which is what causes the
+        // TaskDone is set before taskSucceeded/taskTerminated are sent out - which is what causes the
         // thread to exit
         LOG.warn("Exiting TaskReporter thread with pending queue size=" + pendingEventCount);
       }
@@ -243,7 +249,7 @@ public class LlapTaskReporter implements TaskReporterInterface {
       List<TezEvent> events = new ArrayList<TezEvent>();
       eventsToSend.drainTo(events);
 
-      if (!task.isTaskDone() && !task.hadFatalError()) {
+      if (!task.isTaskDone() && !task.wasErrorReported()) {
         boolean sendCounters = false;
         /**
          * Increasing the heartbeat interval can delay the delivery of events. Sending just updated
@@ -262,8 +268,9 @@ public class LlapTaskReporter implements TaskReporterInterface {
       long requestId = requestCounter.incrementAndGet();
       int fromEventId = task.getNextFromEventId();
       int fromPreRoutedEventId = task.getNextPreRoutedEventId();
+      int maxEvents = Math.min(maxEventsToGet, task.getMaxEventsToHandle());
       TezHeartbeatRequest request = new TezHeartbeatRequest(requestId, events, fromPreRoutedEventId,
-          containerIdStr, task.getTaskAttemptID(), fromEventId, maxEventsToGet);
+          containerIdStr, task.getTaskAttemptID(), fromEventId, maxEvents);
       if (LOG.isDebugEnabled()) {
         LOG.debug("Sending heartbeat to AM, request=" + request);
       }
@@ -288,7 +295,7 @@ public class LlapTaskReporter implements TaskReporterInterface {
       // The same umbilical is used by multiple tasks. Problematic in the case where multiple tasks
       // are running using the same umbilical.
       int numEventsReceived = 0;
-      if (task.isTaskDone() || task.hadFatalError()) {
+      if (task.isTaskDone() || task.wasErrorReported()) {
         if (response.getEvents() != null && !response.getEvents().isEmpty()) {
           LOG.warn("Current task already complete, Ignoring all event in"
               + " heartbeat response, eventCount=" + response.getEvents().size());
@@ -296,16 +303,31 @@ public class LlapTaskReporter implements TaskReporterInterface {
       } else {
         task.setNextFromEventId(response.getNextFromEventId());
         task.setNextPreRoutedEventId(response.getNextPreRoutedEventId());
+        List<TezEvent> taskEvents = null;
         if (response.getEvents() != null && !response.getEvents().isEmpty()) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Routing events from heartbeat response to task" + ", currentTaskAttemptId="
+          if (LOG.isInfoEnabled()) {
+            LOG.info("Routing events from heartbeat response to task" + ", currentTaskAttemptId="
                 + task.getTaskAttemptID() + ", eventCount=" + response.getEvents().size()
                 + " fromEventId=" + fromEventId
                 + " nextFromEventId=" + response.getNextFromEventId());
           }
           // This should ideally happen in a separate thread
           numEventsReceived = response.getEvents().size();
-          task.handleEvents(response.getEvents());
+          taskEvents = response.getEvents();
+        }
+        if (initialEvent != null) {
+          // We currently only give the initial event to the task on the first heartbeat. Given
+          // that the split is ready, it seems pointless to wait, but that's how Tez works.
+          List<TezEvent> oldEvents = taskEvents;
+          taskEvents = new ArrayList<>(1 + (taskEvents == null ? 0 : taskEvents.size()));
+          taskEvents.add(initialEvent);
+          initialEvent = null;
+          if (oldEvents != null) {
+            taskEvents.addAll(oldEvents);
+          }
+        }
+        if (taskEvents != null) {
+          task.handleEvents(taskEvents);
         }
       }
       return new ResponseWrapper(false, numEventsReceived);
@@ -372,6 +394,8 @@ public class LlapTaskReporter implements TaskReporterInterface {
     /**
      * Sends out final events for task failure.
      * @param taskAttemptID
+     * @param isKilled
+     * @param taskFailureType
      * @param t
      * @param diagnostics
      * @param srcMeta
@@ -381,19 +405,33 @@ public class LlapTaskReporter implements TaskReporterInterface {
      * @throws TezException
      *           indicates an exception somewhere in the AM.
      */
-    private boolean taskFailed(TezTaskAttemptID taskAttemptID, Throwable t, String diagnostics,
+    private boolean taskTerminated(TezTaskAttemptID taskAttemptID, boolean isKilled,
+                               TaskFailureType taskFailureType, Throwable t, String diagnostics,
                                EventMetaData srcMeta) throws IOException, TezException {
       // Ensure only one final event is ever sent.
       if (!finalEventQueued.getAndSet(true)) {
-        TezEvent statusUpdateEvent = new TezEvent(getStatusUpdateEvent(true), updateEventMetadata);
+        List<TezEvent> tezEvents = new ArrayList<>();
         if (diagnostics == null) {
           diagnostics = ExceptionUtils.getStackTrace(t);
         } else {
           diagnostics = diagnostics + ":" + ExceptionUtils.getStackTrace(t);
         }
-        TezEvent taskAttemptFailedEvent = new TezEvent(new TaskAttemptFailedEvent(diagnostics),
-            srcMeta == null ? updateEventMetadata : srcMeta);
-        return !heartbeat(Lists.newArrayList(statusUpdateEvent, taskAttemptFailedEvent)).shouldDie;
+
+        if (isKilled) {
+          tezEvents.add(new TezEvent(new TaskAttemptKilledEvent(diagnostics),
+              srcMeta == null ? updateEventMetadata : srcMeta));
+        } else {
+          tezEvents.add(new TezEvent(new TaskAttemptFailedEvent(diagnostics,
+              taskFailureType),
+              srcMeta == null ? updateEventMetadata : srcMeta));
+        }
+        try {
+          tezEvents.add(new TezEvent(getStatusUpdateEvent(true), updateEventMetadata));
+        } catch (Exception e) {
+          // Counter may exceed limitation
+          LOG.warn("Error when get constructing TaskStatusUpdateEvent. Not sending it out");
+        }
+        return !heartbeat(tezEvents).shouldDie;
       } else {
         LOG.warn("A final task state event has already been sent. Not sending again");
         return askedToDie.get();
@@ -434,9 +472,19 @@ public class LlapTaskReporter implements TaskReporterInterface {
   }
 
   @Override
-  public synchronized boolean taskFailed(TezTaskAttemptID taskAttemptID, Throwable t, String diagnostics,
+  public boolean taskFailed(TezTaskAttemptID tezTaskAttemptID, TaskFailureType taskFailureType,
+                            Throwable throwable, String diagnostics, EventMetaData srcMeta) throws
+      IOException, TezException {
+    return currentCallable
+        .taskTerminated(tezTaskAttemptID, false, taskFailureType, throwable, diagnostics, srcMeta);
+  }
+
+  @Override
+  public boolean taskKilled(TezTaskAttemptID tezTaskAttemptID, Throwable throwable,
+                            String diagnostics,
                             EventMetaData srcMeta) throws IOException, TezException {
-    return currentCallable.taskFailed(taskAttemptID, t, diagnostics, srcMeta);
+    return currentCallable
+        .taskTerminated(tezTaskAttemptID, true, null, throwable, diagnostics, srcMeta);
   }
 
   @Override

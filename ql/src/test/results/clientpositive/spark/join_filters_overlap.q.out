@@ -22,78 +22,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- overlap on a
 explain extended select * from a left outer join a b on (a.key=b.key AND a.value=50 AND b.value=50) left outer join a c on (a.key=c.key AND a.value=60 AND c.value=60)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_LEFTOUTERJOIN
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-               b
-            AND
-               AND
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        value
-                     50
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     value
-                  50
-         TOK_TABREF
-            TOK_TABNAME
-               a
-            c
-         AND
-            AND
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     key
-                  .
-                     TOK_TABLE_OR_COL
-                        c
-                     key
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     value
-                  60
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     c
-                  value
-               60
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -176,7 +104,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: b
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -244,11 +172,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [b]
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: c
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -316,7 +244,7 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [c]
         Reducer 2 
             Needs Tagging: true
             Reduce Operator Tree:
@@ -393,78 +321,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- overlap on b
 explain extended select * from a right outer join a b on (a.key=b.key AND a.value=50 AND b.value=50) left outer join a c on (b.key=c.key AND b.value=60 AND c.value=60)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_RIGHTOUTERJOIN
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-               b
-            AND
-               AND
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        value
-                     50
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     value
-                  50
-         TOK_TABREF
-            TOK_TABNAME
-               a
-            c
-         AND
-            AND
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     key
-                  .
-                     TOK_TABLE_OR_COL
-                        c
-                     key
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     value
-                  60
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     c
-                  value
-               60
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -551,7 +407,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: b
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Select Operator
@@ -615,11 +471,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [b]
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: c
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -687,7 +543,7 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [c]
         Reducer 2 
             Needs Tagging: true
             Reduce Operator Tree:
@@ -764,92 +620,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- overlap on b with two filters for each
 explain extended select * from a right outer join a b on (a.key=b.key AND a.value=50 AND b.value=50 AND b.value>10) left outer join a c on (b.key=c.key AND b.value=60 AND b.value>20 AND c.value=60)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_RIGHTOUTERJOIN
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-               b
-            AND
-               AND
-                  AND
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        .
-                           TOK_TABLE_OR_COL
-                              b
-                           key
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           value
-                        50
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        value
-                     50
-               >
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     value
-                  10
-         TOK_TABREF
-            TOK_TABNAME
-               a
-            c
-         AND
-            AND
-               AND
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                     .
-                        TOK_TABLE_OR_COL
-                           c
-                        key
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        value
-                     60
-               >
-                  .
-                     TOK_TABLE_OR_COL
-                        b
-                     value
-                  20
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     c
-                  value
-               60
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -936,7 +706,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: b
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Select Operator
@@ -1000,11 +770,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [b]
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: c
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -1072,7 +842,7 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [c]
         Reducer 2 
             Needs Tagging: true
             Reduce Operator Tree:
@@ -1149,106 +919,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- overlap on a, b
 explain extended select * from a full outer join a b on (a.key=b.key AND a.value=50 AND b.value=50) left outer join a c on (b.key=c.key AND b.value=60 AND c.value=60) left outer join a d on (a.key=d.key AND a.value=40 AND d.value=40)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_LEFTOUTERJOIN
-            TOK_FULLOUTERJOIN
-               TOK_TABREF
-                  TOK_TABNAME
-                     a
-               TOK_TABREF
-                  TOK_TABNAME
-                     a
-                  b
-               AND
-                  AND
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        .
-                           TOK_TABLE_OR_COL
-                              b
-                           key
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           value
-                        50
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        value
-                     50
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-               c
-            AND
-               AND
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        key
-                     .
-                        TOK_TABLE_OR_COL
-                           c
-                        key
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        value
-                     60
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        c
-                     value
-                  60
-         TOK_TABREF
-            TOK_TABNAME
-               a
-            d
-         AND
-            AND
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     key
-                  .
-                     TOK_TABLE_OR_COL
-                        d
-                     key
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     value
-                  40
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     d
-                  value
-               40
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1331,7 +1001,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: b
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Select Operator
@@ -1395,11 +1065,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [b]
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: c
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -1467,11 +1137,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [c]
         Map 5 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: d
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -1539,7 +1209,7 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [d]
         Reducer 2 
             Needs Tagging: true
             Reduce Operator Tree:
@@ -1611,106 +1281,6 @@ PREHOOK: type: QUERY
 POSTHOOK: query: -- triple overlap on a
 explain extended select * from a left outer join a b on (a.key=b.key AND a.value=50 AND b.value=50) left outer join a c on (a.key=c.key AND a.value=60 AND c.value=60) left outer join a d on (a.key=d.key AND a.value=40 AND d.value=40)
 POSTHOOK: type: QUERY
-ABSTRACT SYNTAX TREE:
-  
-TOK_QUERY
-   TOK_FROM
-      TOK_LEFTOUTERJOIN
-         TOK_LEFTOUTERJOIN
-            TOK_LEFTOUTERJOIN
-               TOK_TABREF
-                  TOK_TABNAME
-                     a
-               TOK_TABREF
-                  TOK_TABNAME
-                     a
-                  b
-               AND
-                  AND
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           key
-                        .
-                           TOK_TABLE_OR_COL
-                              b
-                           key
-                     =
-                        .
-                           TOK_TABLE_OR_COL
-                              a
-                           value
-                        50
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           b
-                        value
-                     50
-            TOK_TABREF
-               TOK_TABNAME
-                  a
-               c
-            AND
-               AND
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        key
-                     .
-                        TOK_TABLE_OR_COL
-                           c
-                        key
-                  =
-                     .
-                        TOK_TABLE_OR_COL
-                           a
-                        value
-                     60
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        c
-                     value
-                  60
-         TOK_TABREF
-            TOK_TABNAME
-               a
-            d
-         AND
-            AND
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     key
-                  .
-                     TOK_TABLE_OR_COL
-                        d
-                     key
-               =
-                  .
-                     TOK_TABLE_OR_COL
-                        a
-                     value
-                  40
-            =
-               .
-                  TOK_TABLE_OR_COL
-                     d
-                  value
-               40
-   TOK_INSERT
-      TOK_DESTINATION
-         TOK_DIR
-            TOK_TMP_FILE
-      TOK_SELECT
-         TOK_SELEXPR
-            TOK_ALLCOLREF
-
-
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1793,7 +1363,7 @@ STAGE PLANS:
         Map 3 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: b
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -1861,11 +1431,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [b]
         Map 4 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: c
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -1933,11 +1503,11 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [c]
         Map 5 
             Map Operator Tree:
                 TableScan
-                  alias: a
+                  alias: d
                   Statistics: Num rows: 3 Data size: 18 Basic stats: COMPLETE Column stats: NONE
                   GatherStats: false
                   Filter Operator
@@ -2005,7 +1575,7 @@ STAGE PLANS:
                     name: default.a
                   name: default.a
             Truncated Path -> Alias:
-              /a [a]
+              /a [d]
         Reducer 2 
             Needs Tagging: true
             Reduce Operator Tree:

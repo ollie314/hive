@@ -25,19 +25,25 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.common.UgiFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.llap.DaemonId;
+import org.apache.hadoop.hive.llap.NotTezEventHelper;
 import org.apache.hadoop.hive.llap.daemon.ContainerRunner;
 import org.apache.hadoop.hive.llap.daemon.FragmentCompletionHandler;
 import org.apache.hadoop.hive.llap.daemon.HistoryLogger;
 import org.apache.hadoop.hive.llap.daemon.KilledTaskHandler;
 import org.apache.hadoop.hive.llap.daemon.QueryFailedHandler;
+import org.apache.hadoop.hive.llap.daemon.impl.LlapTokenChecker.LlapTokenInfo;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.FragmentRuntimeInfo;
-import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.FragmentSpecProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.GroupInputSpecProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.IOSpecProto;
+import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.NotTezEvent;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryCompleteResponseProto;
+import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.QueryIdentifierProto;
+import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SignableVertexSpec;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateUpdatedRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SourceStateUpdatedResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SubmissionStateProto;
@@ -45,14 +51,19 @@ import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SubmitWor
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.SubmitWorkResponseProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.TerminateFragmentRequestProto;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.TerminateFragmentResponseProto;
+import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos.VertexOrBinary;
 import org.apache.hadoop.hive.llap.metrics.LlapDaemonExecutorMetrics;
-import org.apache.hadoop.hive.ql.exec.tez.TezProcessor;
+import org.apache.hadoop.hive.llap.security.LlapSignerImpl;
+import org.apache.hadoop.hive.llap.tez.Converters;
+import org.apache.hadoop.hive.llap.tezplugins.LlapTezUtils;
 import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.security.Credentials;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.service.CompositeService;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.util.AuxiliaryServiceHelper;
+import org.apache.log4j.MDC;
 import org.apache.log4j.NDC;
 import org.apache.tez.common.security.JobTokenIdentifier;
 import org.apache.tez.common.security.TokenCache;
@@ -62,11 +73,14 @@ import org.apache.tez.dag.records.TezTaskAttemptID;
 import org.apache.tez.hadoop.shim.HadoopShim;
 import org.apache.tez.hadoop.shim.HadoopShimsLoader;
 import org.apache.tez.runtime.api.impl.ExecutionContextImpl;
+import org.apache.tez.runtime.api.impl.TezEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-// TODO Convert this to a CompositeService
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+
 public class ContainerRunnerImpl extends CompositeService implements ContainerRunner, FragmentCompletionHandler, QueryFailedHandler {
 
   // TODO Setup a set of threads to process incoming requests.
@@ -83,30 +97,35 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
   private final Map<String, String> localEnv = new HashMap<>();
   private final long memoryPerExecutor;
   private final LlapDaemonExecutorMetrics metrics;
-  private final Configuration conf;
   private final TaskRunnerCallable.ConfParams confParams;
   private final KilledTaskHandler killedTaskHandler = new KilledTaskHandlerImpl();
   private final HadoopShim tezHadoopShim;
+  private final LlapSignerImpl signer;
+  private final String clusterId;
+  private final UgiFactory fsUgiFactory;
 
   public ContainerRunnerImpl(Configuration conf, int numExecutors, int waitQueueSize,
       boolean enablePreemption, String[] localDirsBase, AtomicReference<Integer> localShufflePort,
       AtomicReference<InetSocketAddress> localAddress,
       long totalMemoryAvailableBytes, LlapDaemonExecutorMetrics metrics,
-      AMReporter amReporter, ClassLoader classLoader) {
+      AMReporter amReporter, ClassLoader classLoader, DaemonId daemonId, UgiFactory fsUgiFactory) {
     super("ContainerRunnerImpl");
-    this.conf = conf;
     Preconditions.checkState(numExecutors > 0,
         "Invalid number of executors: " + numExecutors + ". Must be > 0");
     this.localAddress = localAddress;
     this.localShufflePort = localShufflePort;
     this.amReporter = amReporter;
+    this.signer = UserGroupInformation.isSecurityEnabled()
+        ? new LlapSignerImpl(conf, daemonId.getClusterString()) : null;
+    this.fsUgiFactory = fsUgiFactory;
 
-    this.queryTracker = new QueryTracker(conf, localDirsBase);
+    this.clusterId = daemonId.getClusterString();
+    this.queryTracker = new QueryTracker(conf, localDirsBase, clusterId);
     addIfService(queryTracker);
     String waitQueueSchedulerClassName = HiveConf.getVar(
         conf, ConfVars.LLAP_DAEMON_WAIT_QUEUE_COMPARATOR_CLASS_NAME);
     this.executorService = new TaskExecutorService(numExecutors, waitQueueSize,
-        waitQueueSchedulerClassName, enablePreemption, classLoader);
+        waitQueueSchedulerClassName, enablePreemption, classLoader, metrics);
 
     addIfService(executorService);
 
@@ -151,31 +170,49 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
 
   @Override
   public SubmitWorkResponseProto submitWork(SubmitWorkRequestProto request) throws IOException {
-    HistoryLogger.logFragmentStart(request.getApplicationIdString(), request.getContainerIdString(),
-        localAddress.get().getHostName(), request.getFragmentSpec().getDagName(), request.getFragmentSpec().getDagId(),
-        request.getFragmentSpec().getVertexName(), request.getFragmentSpec().getFragmentNumber(),
-        request.getFragmentSpec().getAttemptNumber());
+    LlapTokenInfo tokenInfo = LlapTokenChecker.getTokenInfo(clusterId);
+    SignableVertexSpec vertex = extractVertexSpec(request, tokenInfo);
+    TezEvent initialEvent = extractInitialEvent(request, tokenInfo);
+
     if (LOG.isInfoEnabled()) {
-      LOG.info("Queueing container for execution: " + stringifySubmitRequest(request));
+      LOG.info("Queueing container for execution: " + stringifySubmitRequest(request, vertex));
     }
+    QueryIdentifierProto qIdProto = vertex.getQueryIdentifier();
+    TezTaskAttemptID attemptId =
+        Converters.createTaskAttemptId(vertex.getQueryIdentifier(), vertex.getVertexIndex(),
+            request.getFragmentNumber(), request.getAttemptNumber());
+    String fragmentIdString = attemptId.toString();
+    HistoryLogger.logFragmentStart(qIdProto.getApplicationIdString(), request.getContainerIdString(),
+        localAddress.get().getHostName(), vertex.getDagName(), qIdProto.getDagIndex(),
+        vertex.getVertexName(), request.getFragmentNumber(), request.getAttemptNumber());
+
     // This is the start of container-annotated logging.
-    // TODO Reduce the length of this string. Way too verbose at the moment.
-    String ndcContextString = request.getFragmentSpec().getFragmentIdentifierString();
-    NDC.push(ndcContextString);
+    final String dagId = attemptId.getTaskID().getVertexID().getDAGId().toString();
+    final String queryId = vertex.getHiveQueryId();
+    final String fragId = LlapTezUtils.stripAttemptPrefix(fragmentIdString);
+    MDC.put("dagId", dagId);
+    MDC.put("queryId", queryId);
+    MDC.put("fragmentId", fragId);
+    // TODO: Ideally we want tez to use CallableWithMdc that retains the MDC for threads created in
+    // thread pool. For now, we will push both dagId and queryId into NDC and the custom thread
+    // pool that we use for task execution and llap io (StatsRecordingThreadPool) will pop them
+    // using reflection and update the MDC.
+    NDC.push(dagId);
+    NDC.push(queryId);
+    NDC.push(fragId);
     Scheduler.SubmissionState submissionState;
     SubmitWorkResponseProto.Builder responseBuilder = SubmitWorkResponseProto.newBuilder();
     try {
       Map<String, String> env = new HashMap<>();
       // TODO What else is required in this environment map.
       env.putAll(localEnv);
-      env.put(ApplicationConstants.Environment.USER.name(), request.getUser());
+      env.put(ApplicationConstants.Environment.USER.name(), vertex.getUser());
 
-      FragmentSpecProto fragmentSpec = request.getFragmentSpec();
-      TezTaskAttemptID taskAttemptId = TezTaskAttemptID.fromString(
-          fragmentSpec.getFragmentIdentifierString());
+      TezTaskAttemptID taskAttemptId = TezTaskAttemptID.fromString(fragmentIdString);
       int dagIdentifier = taskAttemptId.getTaskID().getVertexID().getDAGId().getId();
 
-      QueryIdentifier queryIdentifier = new QueryIdentifier(request.getApplicationIdString(), dagIdentifier);
+      QueryIdentifier queryIdentifier = new QueryIdentifier(
+          qIdProto.getApplicationIdString(), dagIdentifier);
 
       Credentials credentials = new Credentials();
       DataInputBuffer dib = new DataInputBuffer();
@@ -185,13 +222,11 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
 
       Token<JobTokenIdentifier> jobToken = TokenCache.getSessionToken(credentials);
 
-      QueryFragmentInfo fragmentInfo = queryTracker
-          .registerFragment(queryIdentifier, request.getApplicationIdString(),
-              fragmentSpec.getDagName(),
-              dagIdentifier,
-              fragmentSpec.getVertexName(), fragmentSpec.getFragmentNumber(),
-              fragmentSpec.getAttemptNumber(), request.getUser(), request.getFragmentSpec(),
-              jobToken);
+      QueryFragmentInfo fragmentInfo = queryTracker.registerFragment(
+          queryIdentifier, qIdProto.getApplicationIdString(), dagId,
+          vertex.getDagName(), vertex.getHiveQueryId(), dagIdentifier,
+          vertex.getVertexName(), request.getFragmentNumber(), request.getAttemptNumber(),
+          vertex.getUser(), vertex, jobToken, fragmentIdString, tokenInfo);
 
       String[] localDirs = fragmentInfo.getLocalDirs();
       Preconditions.checkNotNull(localDirs);
@@ -201,14 +236,16 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
       // May need to setup localDir for re-localization, which is usually setup as Environment.PWD.
       // Used for re-localization, to add the user specified configuration (conf_pb_binary_stream)
 
-      TaskRunnerCallable callable = new TaskRunnerCallable(request, fragmentInfo, new Configuration(getConfig()),
-          new LlapExecutionContext(localAddress.get().getHostName(), queryTracker), env,
+      Configuration callableConf = new Configuration(getConfig());
+      UserGroupInformation taskUgi = fsUgiFactory == null ? null : fsUgiFactory.createUgi();
+      TaskRunnerCallable callable = new TaskRunnerCallable(request, fragmentInfo, callableConf,
+          new ExecutionContextImpl(localAddress.get().getHostName()), env,
           credentials, memoryPerExecutor, amReporter, confParams, metrics, killedTaskHandler,
-          this, tezHadoopShim);
+          this, tezHadoopShim, attemptId, vertex, initialEvent, taskUgi);
       submissionState = executorService.schedule(callable);
 
       if (LOG.isInfoEnabled()) {
-        LOG.info("SubmissionState for {} : {} ", ndcContextString, submissionState);
+        LOG.info("SubmissionState for {} : {} ", fragmentIdString, submissionState);
       }
 
       if (submissionState.equals(Scheduler.SubmissionState.REJECTED)) {
@@ -218,57 +255,95 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
             .setSubmissionState(SubmissionStateProto.valueOf(submissionState.name()))
             .build();
       }
-      metrics.incrExecutorTotalRequestsHandled();
-      metrics.incrExecutorNumQueuedRequests();
+      if (metrics != null) {
+        metrics.incrExecutorTotalRequestsHandled();
+      }
     } finally {
-      NDC.pop();
+      MDC.clear();
+      NDC.clear();
     }
 
     responseBuilder.setSubmissionState(SubmissionStateProto.valueOf(submissionState.name()));
     return responseBuilder.build();
   }
 
-  private static class LlapExecutionContext extends ExecutionContextImpl
-      implements TezProcessor.Hook {
-    private final QueryTracker queryTracker;
-    public LlapExecutionContext(String hostname, QueryTracker queryTracker) {
-      super(hostname);
-      this.queryTracker = queryTracker;
+  private SignableVertexSpec extractVertexSpec(SubmitWorkRequestProto request,
+      LlapTokenInfo tokenInfo) throws InvalidProtocolBufferException, IOException {
+    VertexOrBinary vob = request.getWorkSpec();
+    SignableVertexSpec vertex = vob.hasVertex() ? vob.getVertex() : null;
+    ByteString vertexBinary = vob.hasVertexBinary() ? vob.getVertexBinary() : null;
+    if (vertexBinary != null) {
+      if (vertex != null) {
+        throw new IOException(
+          "Vertex and vertexBinary in VertexOrBinary cannot be set at the same time");
+      }
+      vertex = SignableVertexSpec.parseFrom(vob.getVertexBinary());
     }
 
-    @Override
-    public void initializeHook(TezProcessor source) {
-      queryTracker.registerDagQueryId(
-          new QueryIdentifier(source.getContext().getApplicationId().toString(),
-              source.getContext().getDagIdentifier()),
-          HiveConf.getVar(source.getConf(), HiveConf.ConfVars.HIVEQUERYID));
+    if (tokenInfo.isSigningRequired) {
+      checkSignature(vertex, vertexBinary, request, tokenInfo.userName);
+    }
+    return vertex;
+  }
+
+  private TezEvent extractInitialEvent(SubmitWorkRequestProto request, LlapTokenInfo tokenInfo)
+      throws InvalidProtocolBufferException {
+    if (!request.hasInitialEventBytes()) return null;
+    ByteString initialEventByteString = request.getInitialEventBytes();
+    byte[] initialEventBytes = initialEventByteString.toByteArray();
+    NotTezEvent initialEvent = NotTezEvent.parseFrom(initialEventBytes);
+    if (tokenInfo.isSigningRequired) {
+      if (!request.hasInitialEventSignature()) {
+        throw new SecurityException("Unsigned initial event is not allowed");
+      }
+      byte[] signatureBytes = request.getInitialEventSignature().toByteArray();
+      signer.checkSignature(initialEventBytes, signatureBytes, initialEvent.getKeyId());
+    }
+    return NotTezEventHelper.toTezEvent(initialEvent);
+  }
+
+  private void checkSignature(SignableVertexSpec vertex, ByteString vertexBinary,
+      SubmitWorkRequestProto request, String tokenUserName) throws SecurityException, IOException {
+    if (!request.hasWorkSpecSignature()) {
+      throw new SecurityException("Unsigned fragment not allowed");
+    }
+    if (vertexBinary == null) {
+      ByteString.Output os = ByteString.newOutput();
+      vertex.writeTo(os);
+      vertexBinary = os.toByteString();
+    }
+    signer.checkSignature(vertexBinary.toByteArray(),
+        request.getWorkSpecSignature().toByteArray(), (int)vertex.getSignatureKeyId());
+    if (!vertex.hasUser() || !vertex.getUser().equals(tokenUserName)) {
+      throw new SecurityException("LLAP token is for " + tokenUserName
+          + " but the fragment is for " + (vertex.hasUser() ? vertex.getUser() : null));
     }
   }
 
   @Override
   public SourceStateUpdatedResponseProto sourceStateUpdated(
-      SourceStateUpdatedRequestProto request) {
+      SourceStateUpdatedRequestProto request) throws IOException {
     LOG.info("Processing state update: " + stringifySourceStateUpdateRequest(request));
-    queryTracker.registerSourceStateChange(
-        new QueryIdentifier(request.getQueryIdentifier().getAppIdentifier(),
-            request.getQueryIdentifier().getDagIdentifier()), request.getSrcName(),
-        request.getState());
+    QueryIdentifier queryId =
+        new QueryIdentifier(request.getQueryIdentifier().getApplicationIdString(),
+            request.getQueryIdentifier().getDagIndex());
+    queryTracker.registerSourceStateChange(queryId, request.getSrcName(), request.getState());
     return SourceStateUpdatedResponseProto.getDefaultInstance();
   }
 
   @Override
-  public QueryCompleteResponseProto queryComplete(QueryCompleteRequestProto request) {
+  public QueryCompleteResponseProto queryComplete(
+      QueryCompleteRequestProto request) throws IOException {
     QueryIdentifier queryIdentifier =
-        new QueryIdentifier(request.getQueryIdentifier().getAppIdentifier(),
-            request.getQueryIdentifier().getDagIdentifier());
+        new QueryIdentifier(request.getQueryIdentifier().getApplicationIdString(),
+            request.getQueryIdentifier().getDagIndex());
     LOG.info("Processing queryComplete notification for {}", queryIdentifier);
-    List<QueryFragmentInfo> knownFragments =
-        queryTracker
-            .queryComplete(queryIdentifier, request.getDeleteDelay());
+    List<QueryFragmentInfo> knownFragments = queryTracker.queryComplete(
+        queryIdentifier, request.getDeleteDelay(), false);
     LOG.info("DBG: Pending fragment count for completed query {} = {}", queryIdentifier,
         knownFragments.size());
     for (QueryFragmentInfo fragmentInfo : knownFragments) {
-      LOG.info("DBG: Issuing killFragment for completed query {} {}", queryIdentifier,
+      LOG.info("Issuing killFragment for completed query {} {}", queryIdentifier,
           fragmentInfo.getFragmentIdentifierString());
       executorService.killFragment(fragmentInfo.getFragmentIdentifierString());
     }
@@ -276,40 +351,49 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
   }
 
   @Override
-  public TerminateFragmentResponseProto terminateFragment(TerminateFragmentRequestProto request) {
-    LOG.info("DBG: Received terminateFragment request for {}", request.getFragmentIdentifierString());
-    executorService.killFragment(request.getFragmentIdentifierString());
+  public TerminateFragmentResponseProto terminateFragment(
+      TerminateFragmentRequestProto request) throws IOException {
+    String fragmentId = request.getFragmentIdentifierString();
+    LOG.info("DBG: Received terminateFragment request for {}", fragmentId);
+    // TODO: ideally, QueryTracker should have fragment-to-query mapping.
+    QueryIdentifier queryId = executorService.findQueryByFragment(fragmentId);
+    // checkPermissions returns false if query is not found, throws on failure.
+    if (queryId != null && queryTracker.checkPermissionsForQuery(queryId)) {
+      executorService.killFragment(fragmentId);
+    }
     return TerminateFragmentResponseProto.getDefaultInstance();
   }
 
   private String stringifySourceStateUpdateRequest(SourceStateUpdatedRequestProto request) {
     StringBuilder sb = new StringBuilder();
-    QueryIdentifier queryIdentifier = new QueryIdentifier(request.getQueryIdentifier().getAppIdentifier(),
-        request.getQueryIdentifier().getDagIdentifier());
+    QueryIdentifier queryIdentifier = new QueryIdentifier(request.getQueryIdentifier().getApplicationIdString(),
+        request.getQueryIdentifier().getDagIndex());
     sb.append("queryIdentifier=").append(queryIdentifier)
         .append(", ").append("sourceName=").append(request.getSrcName())
         .append(", ").append("state=").append(request.getState());
     return sb.toString();
   }
 
-  public static String stringifySubmitRequest(SubmitWorkRequestProto request) {
+  public static String stringifySubmitRequest(
+      SubmitWorkRequestProto request, SignableVertexSpec vertex) {
     StringBuilder sb = new StringBuilder();
-    FragmentSpecProto fragmentSpec = request.getFragmentSpec();
     sb.append("am_details=").append(request.getAmHost()).append(":").append(request.getAmPort());
-    sb.append(", taskInfo=").append(fragmentSpec.getFragmentIdentifierString());
-    sb.append(", user=").append(request.getUser());
-    sb.append(", appIdString=").append(request.getApplicationIdString());
-    sb.append(", appAttemptNum=").append(request.getAppAttemptNumber());
+    sb.append(", taskInfo=").append(" fragment ")
+      .append(request.getFragmentNumber()).append(" attempt ").append(request.getAttemptNumber());
+    sb.append(", user=").append(vertex.getUser());
+    sb.append(", queryId=").append(vertex.getHiveQueryId());
+    sb.append(", appIdString=").append(vertex.getQueryIdentifier().getApplicationIdString());
+    sb.append(", appAttemptNum=").append(vertex.getQueryIdentifier().getAppAttemptNumber());
     sb.append(", containerIdString=").append(request.getContainerIdString());
-    sb.append(", dagName=").append(fragmentSpec.getDagName());
-    sb.append(", vertexName=").append(fragmentSpec.getVertexName());
-    sb.append(", processor=").append(fragmentSpec.getProcessorDescriptor().getClassName());
-    sb.append(", numInputs=").append(fragmentSpec.getInputSpecsCount());
-    sb.append(", numOutputs=").append(fragmentSpec.getOutputSpecsCount());
-    sb.append(", numGroupedInputs=").append(fragmentSpec.getGroupedInputSpecsCount());
+    sb.append(", dagName=").append(vertex.getDagName());
+    sb.append(", vertexName=").append(vertex.getVertexName());
+    sb.append(", processor=").append(vertex.getProcessorDescriptor().getClassName());
+    sb.append(", numInputs=").append(vertex.getInputSpecsCount());
+    sb.append(", numOutputs=").append(vertex.getOutputSpecsCount());
+    sb.append(", numGroupedInputs=").append(vertex.getGroupedInputSpecsCount());
     sb.append(", Inputs={");
-    if (fragmentSpec.getInputSpecsCount() > 0) {
-      for (IOSpecProto ioSpec : fragmentSpec.getInputSpecsList()) {
+    if (vertex.getInputSpecsCount() > 0) {
+      for (IOSpecProto ioSpec : vertex.getInputSpecsList()) {
         sb.append("{").append(ioSpec.getConnectedVertexName()).append(",")
             .append(ioSpec.getIoDescriptor().getClassName()).append(",")
             .append(ioSpec.getPhysicalEdgeCount()).append("}");
@@ -317,8 +401,8 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
     }
     sb.append("}");
     sb.append(", Outputs={");
-    if (fragmentSpec.getOutputSpecsCount() > 0) {
-      for (IOSpecProto ioSpec : fragmentSpec.getOutputSpecsList()) {
+    if (vertex.getOutputSpecsCount() > 0) {
+      for (IOSpecProto ioSpec : vertex.getOutputSpecsList()) {
         sb.append("{").append(ioSpec.getConnectedVertexName()).append(",")
             .append(ioSpec.getIoDescriptor().getClassName()).append(",")
             .append(ioSpec.getPhysicalEdgeCount()).append("}");
@@ -326,8 +410,8 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
     }
     sb.append("}");
     sb.append(", GroupedInputs={");
-    if (fragmentSpec.getGroupedInputSpecsCount() > 0) {
-      for (GroupInputSpecProto group : fragmentSpec.getGroupedInputSpecsList()) {
+    if (vertex.getGroupedInputSpecsCount() > 0) {
+      for (GroupInputSpecProto group : vertex.getGroupedInputSpecsList()) {
         sb.append("{").append("groupName=").append(group.getGroupName()).append(", elements=")
             .append(group.getGroupVerticesList()).append("}");
         sb.append(group.getGroupVerticesList());
@@ -354,8 +438,12 @@ public class ContainerRunnerImpl extends CompositeService implements ContainerRu
   @Override
   public void queryFailed(QueryIdentifier queryIdentifier) {
     LOG.info("Processing query failed notification for {}", queryIdentifier);
-    List<QueryFragmentInfo> knownFragments =
-        queryTracker.queryComplete(queryIdentifier, -1);
+    List<QueryFragmentInfo> knownFragments;
+    try {
+      knownFragments = queryTracker.queryComplete(queryIdentifier, -1, true);
+    } catch (IOException e) {
+      throw new RuntimeException(e); // Should never happen here, no permission check.
+    }
     LOG.info("DBG: Pending fragment count for failed query {} = {}", queryIdentifier,
         knownFragments.size());
     for (QueryFragmentInfo fragmentInfo : knownFragments) {

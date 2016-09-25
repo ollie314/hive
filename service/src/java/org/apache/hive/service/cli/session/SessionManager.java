@@ -185,14 +185,20 @@ public class SessionManager extends CompositeService {
     }
   }
 
+  private final Object timeoutCheckerLock = new Object();
+
   private void startTimeoutChecker() {
     final long interval = Math.max(checkInterval, 3000l);  // minimum 3 seconds
-    Runnable timeoutChecker = new Runnable() {
+    final Runnable timeoutChecker = new Runnable() {
       @Override
       public void run() {
-        for (sleepInterval(interval); !shutdown; sleepInterval(interval)) {
+        sleepFor(interval);
+        while (!shutdown) {
           long current = System.currentTimeMillis();
           for (HiveSession session : new ArrayList<HiveSession>(handleToSession.values())) {
+            if (shutdown) {
+              break;
+            }
             if (sessionTimeout > 0 && session.getLastAccessTime() + sessionTimeout <= current
                 && (!checkOperation || session.getNoOperationTime() > sessionTimeout)) {
               SessionHandle handle = session.getSessionHandle();
@@ -207,24 +213,35 @@ public class SessionManager extends CompositeService {
               session.closeExpiredOperations();
             }
           }
+          sleepFor(interval);
         }
       }
 
-      private void sleepInterval(long interval) {
-        try {
-          Thread.sleep(interval);
-        } catch (InterruptedException e) {
-          // ignore
+      private void sleepFor(long interval) {
+        synchronized (timeoutCheckerLock) {
+          try {
+            timeoutCheckerLock.wait(interval);
+          } catch (InterruptedException e) {
+            // Ignore, and break.
+          }
         }
       }
     };
     backgroundOperationPool.execute(timeoutChecker);
   }
 
+  private void shutdownTimeoutChecker() {
+    shutdown = true;
+    synchronized (timeoutCheckerLock) {
+      timeoutCheckerLock.notify();
+    }
+  }
+
+
   @Override
   public synchronized void stop() {
     super.stop();
-    shutdown = true;
+    shutdownTimeoutChecker();
     if (backgroundOperationPool != null) {
       backgroundOperationPool.shutdown();
       long timeout = hiveConf.getTimeVar(
@@ -351,20 +368,22 @@ public class SessionManager extends CompositeService {
       throw new HiveSQLException("Failed to execute session hooks: " + e.getMessage(), e);
     }
     handleToSession.put(session.getSessionHandle(), session);
+    LOG.info("Session opened, " + session.getSessionHandle() + ", current sessions:" + getOpenSessionCount());
     return session;
   }
 
-  public void closeSession(SessionHandle sessionHandle) throws HiveSQLException {
+  public synchronized void closeSession(SessionHandle sessionHandle) throws HiveSQLException {
     HiveSession session = handleToSession.remove(sessionHandle);
     if (session == null) {
-      throw new HiveSQLException("Session does not exist!");
+      throw new HiveSQLException("Session does not exist: " + sessionHandle);
     }
+    LOG.info("Session closed, " + sessionHandle + ", current sessions:" + getOpenSessionCount());
     try {
       session.close();
     } finally {
       // Shutdown HiveServer2 if it has been deregistered from ZooKeeper and has no active sessions
       if (!(hiveServer2 == null) && (hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_SUPPORT_DYNAMIC_SERVICE_DISCOVERY))
-          && (!hiveServer2.isRegisteredWithZooKeeper())) {
+          && (hiveServer2.isDeregisteredWithZooKeeper())) {
         // Asynchronously shutdown this instance of HiveServer2,
         // if there are no active client sessions
         if (getOpenSessionCount() == 0) {

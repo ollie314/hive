@@ -70,7 +70,7 @@ public class TestBeelineArgParsing {
     @Override
     boolean dispatch(String command) {
       String connectCommand = "!connect";
-      String propertyCommand = "!property";
+      String propertyCommand = "!properties";
       if (command.startsWith(connectCommand)) {
         this.connectArgs = command.substring(connectCommand.length() + 1, command.length());
       } else if (command.startsWith(propertyCommand)) {
@@ -187,6 +187,25 @@ public class TestBeelineArgParsing {
     Assert.assertTrue(bl.getOpts().getTruncateTable());
   }
 
+  @Test
+  public void testBeelineShowDbInPromptOptsDefault() throws Exception {
+    TestBeeline bl = new TestBeeline();
+    String args[] = new String[] { "-u", "url" };
+    Assert.assertEquals(0, bl.initArgs(args));
+    Assert.assertFalse(bl.getOpts().getShowDbInPrompt());
+    Assert.assertEquals("", bl.getFormattedDb());
+  }
+
+  @Test
+  public void testBeelineShowDbInPromptOptsTrue() throws Exception {
+    TestBeeline bl = new TestBeeline();
+    String args[] = new String[] { "-u", "url", "--showDbInPrompt=true" };
+    Assert.assertEquals(0, bl.initArgs(args));
+    Assert.assertTrue(bl.getOpts().getShowDbInPrompt());
+    Assert.assertEquals(" (default)", bl.getFormattedDb());
+  }
+
+
   /**
    * Test setting script file with -f option.
    */
@@ -198,6 +217,16 @@ public class TestBeelineArgParsing {
     Assert.assertEquals(0, bl.initArgs(args));
     Assert.assertTrue(bl.connectArgs.equals("url name password driver"));
     Assert.assertTrue(bl.getOpts().getScriptFile().equals("myscript"));
+  }
+
+  /**
+   * Test beeline with -f and -e simultaneously
+   */
+  @Test
+  public void testCommandAndFileSimultaneously() throws Exception {
+    TestBeeline bl = new TestBeeline();
+    String args[] = new String[] {"-e", "myselect", "-f", "myscript"};
+    Assert.assertEquals(1, bl.initArgs(args));
   }
 
   /**
@@ -259,5 +288,17 @@ public class TestBeelineArgParsing {
     bl.close();
     String errContents = new String(Files.readAllBytes(Paths.get(errFile.toString())));
     Assert.assertTrue(errContents.contains(BeeLine.PASSWD_MASK));
+  }
+
+  /**
+   * Test property file parameter option.
+   */
+  @Test
+  public void testPropertyFile() throws Exception {
+    TestBeeline bl = new TestBeeline();
+    String args[] = new String[] {"--property-file", "props"};
+    Assert.assertEquals(0, bl.initArgs(args));
+    Assert.assertTrue(bl.properties.get(0).equals("props"));
+    bl.close();
   }
 }

@@ -18,12 +18,15 @@
 package org.apache.hadoop.hive.ql.exec.tez;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Collection;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.llap.registry.ServiceInstance;
 import org.apache.hadoop.hive.llap.registry.impl.LlapRegistryService;
+import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.split.SplitLocationProvider;
 import org.slf4j.Logger;
 
@@ -38,20 +41,33 @@ public class Utils {
       LlapRegistryService serviceRegistry;
       serviceRegistry = LlapRegistryService.getClient(conf);
 
-      List<ServiceInstance> serviceInstances =
-          serviceRegistry.getInstances().getAllInstancesOrdered();
-      String[] locations = new String[serviceInstances.size()];
-      int i = 0;
+      Collection<ServiceInstance> serviceInstances =
+          serviceRegistry.getInstances().getAllInstancesOrdered(true);
+      ArrayList<String> locations = new ArrayList<>(serviceInstances.size());
       for (ServiceInstance serviceInstance : serviceInstances) {
         if (LOG.isDebugEnabled()) {
           LOG.debug("Adding " + serviceInstance.getWorkerIdentity() + " with hostname=" +
               serviceInstance.getHost() + " to list for split locations");
         }
-        locations[i++] = serviceInstance.getHost();
+        locations.add(serviceInstance.getHost());
       }
       splitLocationProvider = new HostAffinitySplitLocationProvider(locations);
     } else {
-      splitLocationProvider = null;
+      splitLocationProvider = new SplitLocationProvider() {
+        @Override
+        public String[] getLocations(InputSplit split) throws IOException {
+          if (split == null) {
+            return null;
+          }
+          String[] locations = split.getLocations();
+          if (locations != null && locations.length == 1) {
+            if ("localhost".equals(locations[0])) {
+              return ArrayUtils.EMPTY_STRING_ARRAY;
+            }
+          }
+          return locations;
+        }
+      };
     }
     return splitLocationProvider;
   }

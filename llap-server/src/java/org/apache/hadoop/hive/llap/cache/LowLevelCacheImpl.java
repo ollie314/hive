@@ -67,7 +67,7 @@ public class LowLevelCacheImpl implements LowLevelCache, BufferUsageManager, Lla
     this.doAssumeGranularBlocks = doAssumeGranularBlocks;
   }
 
-  public void init() {
+  public void startThreads() {
     if (cleanupInterval < 0) return;
     cleanupThread = new CleanupThread(cleanupInterval);
     cleanupThread.start();
@@ -171,7 +171,7 @@ public class LowLevelCacheImpl implements LowLevelCache, BufferUsageManager, Lla
       metrics.incrCacheHitBytes(Math.min(requestedLength, currentCached.getLength()));
     }
     if (currentNotCached != null) {
-      assert !currentNotCached.hasData();
+      assert !currentNotCached.hasData(); // Assumes no ranges passed to cache to read have data.
       if (gotAllData != null) {
         gotAllData.value = false;
       }
@@ -368,7 +368,8 @@ public class LowLevelCacheImpl implements LowLevelCache, BufferUsageManager, Lla
     return fake;
   }
 
-  public final void notifyEvicted(LlapDataBuffer buffer) {
+  @Override
+  public final void notifyEvicted(MemoryBuffer buffer) {
     allocator.deallocateEvicted(buffer);
     newEvictions.incrementAndGet();
   }

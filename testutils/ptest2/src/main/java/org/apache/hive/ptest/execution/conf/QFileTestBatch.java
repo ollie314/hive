@@ -19,20 +19,25 @@
 package org.apache.hive.ptest.execution.conf;
 
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.Iterators;
 
-public class QFileTestBatch implements TestBatch {
+public class QFileTestBatch extends TestBatch {
 
   private final String testCasePropertyName;
   private final String driver;
   private final String queryFilesProperty;
   private final String name;
+  private final String moduleName;
   private final Set<String> tests;
   private final boolean isParallel;
-  public QFileTestBatch(String testCasePropertyName, String driver, 
-      String queryFilesProperty, Set<String> tests, boolean isParallel) {
+
+  public QFileTestBatch(AtomicInteger batchIdCounter, String testCasePropertyName, String driver,
+                        String queryFilesProperty, Set<String> tests, boolean isParallel,
+                        String moduleName) {
+    super(batchIdCounter);
     this.testCasePropertyName = testCasePropertyName;
     this.driver = driver;
     this.queryFilesProperty = queryFilesProperty;
@@ -44,6 +49,7 @@ public class QFileTestBatch implements TestBatch {
     }
     this.name = name;
     this.isParallel = isParallel;
+    this.moduleName = moduleName;
   }
   public String getDriver() {
     return driver;
@@ -64,14 +70,26 @@ public class QFileTestBatch implements TestBatch {
 
   @Override
   public String toString() {
-    return "QFileTestBatch [driver=" + driver + ", queryFilesProperty="
+    return "QFileTestBatch [batchId=" + getBatchId() + ", size=" + tests.size() + ", driver=" +
+        driver + ", queryFilesProperty="
         + queryFilesProperty + ", name=" + name + ", tests=" + tests
-        + ", isParallel=" + isParallel + "]";
+        + ", isParallel=" + isParallel + ", moduleName=" + moduleName + "]";
   }
   @Override
   public boolean isParallel() {
     return isParallel;
   }
+
+  @Override
+  public String getTestModuleRelativeDir() {
+    return moduleName;
+  }
+
+  @Override
+  public int getNumTestsInBatch() {
+    return tests.size();
+  }
+
   @Override
   public int hashCode() {
     final int prime = 31;

@@ -191,8 +191,6 @@ public enum ErrorMsg {
   ARCHIVE_ON_TABLE(10110, "ARCHIVE can only be run on partitions"),
   RESERVED_PART_VAL(10111, "Partition value contains a reserved substring"),
   OFFLINE_TABLE_OR_PARTITION(10113, "Query against an offline table or partition"),
-  OUTERJOIN_USES_FILTERS(10114, "The query results could be wrong. " +
-                         "Turn on hive.outerjoin.supports.filters"),
   NEED_PARTITION_SPECIFICATION(10115, "Table is partitioned and partition specification is needed"),
   INVALID_METADATA(10116, "The metadata file could not be parsed "),
   NEED_TABLE_SPECIFICATION(10117, "Table name could be determined; It should be specified "),
@@ -377,7 +375,7 @@ public enum ErrorMsg {
       "instantiated, check hive.txn.manager"),
   TXN_NO_SUCH_TRANSACTION(10262, "No record of transaction {0} could be found, " +
       "may have timed out", true),
-  TXN_ABORTED(10263, "Transaction manager has aborted the transaction {0}.", true),
+  TXN_ABORTED(10263, "Transaction manager has aborted the transaction {0}.  Reason: {1}", true),
   DBTXNMGR_REQUIRES_CONCURRENCY(10264,
       "To use DbTxnManager you must set hive.support.concurrency=true"),
   TXNMGR_NOT_ACID(10265, "This command is not allowed on an ACID table {0}.{1} with a non-ACID transaction manager", true),
@@ -447,6 +445,15 @@ public enum ErrorMsg {
   INVALID_LOAD_TABLE_FILE_WORK(10322, "Invalid Load Table Work or Load File Work"),
   CLASSPATH_ERROR(10323, "Classpath error"),
   IMPORT_SEMANTIC_ERROR(10324, "Import Semantic Analyzer Error"),
+  INVALID_FK_SYNTAX(10325, "Invalid Foreign Key syntax"),
+  INVALID_PK_SYNTAX(10326, "Invalid Primary Key syntax"),
+  ACID_NOT_ENOUGH_HISTORY(10327, "Not enough history available for ({0},{1}).  " +
+    "Oldest available base: {2}", true),
+  INVALID_COLUMN_NAME(10328, "Invalid column name"),
+  REPLACE_VIEW_WITH_MATERIALIZED(10400, "Attempt to replace view {0} with materialized view", true),
+  REPLACE_MATERIALIZED_WITH_VIEW(10401, "Attempt to replace materialized view {0} with view", true),
+  UPDATE_DELETE_VIEW(10402, "You cannot update or delete records in a view"),
+  MATERIALIZED_VIEW_DEF_EMPTY(10403, "Query for the materialized view rebuild could not be retrieved"),
   //========================== 20000 range starts here ========================//
   SCRIPT_INIT_ERROR(20000, "Unable to initialize custom script."),
   SCRIPT_IO_ERROR(20001, "An error occurred while reading or writing to your custom script. "
@@ -463,7 +470,6 @@ public enum ErrorMsg {
   OP_NOT_ALLOWED_IN_AUTOCOMMIT(20006, "Operation {0} is not allowed when autoCommit=true.", true),//todo: better SQLState?
   OP_NOT_ALLOWED_IN_TXN(20007, "Operation {0} is not allowed in a transaction.  TransactionID={1}.", true),
   OP_NOT_ALLOWED_WITHOUT_TXN(20008, "Operation {0} is not allowed since autoCommit=false and there is no active transaction", true),
-
   //========================== 30000 range starts here ========================//
   STATSPUBLISHER_NOT_OBTAINED(30000, "StatsPublisher cannot be obtained. " +
     "There was a error to retrieve the StatsPublisher, and retrying " +

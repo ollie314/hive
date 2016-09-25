@@ -19,6 +19,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -36,6 +37,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.llap.LlapNodeId;
 import org.apache.hadoop.hive.llap.daemon.rpc.LlapDaemonProtocolProtos;
 import org.apache.hadoop.hive.llap.tez.LlapProtocolClientProxy;
@@ -46,6 +48,7 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.tez.common.TezUtils;
 import org.apache.tez.dag.api.InputDescriptor;
+import org.apache.tez.dag.api.ProcessorDescriptor;
 import org.apache.tez.dag.api.UserPayload;
 import org.apache.tez.dag.api.event.VertexState;
 import org.apache.tez.dag.api.event.VertexStateUpdate;
@@ -55,6 +58,7 @@ import org.apache.tez.dag.records.TezTaskID;
 import org.apache.tez.dag.records.TezVertexID;
 import org.apache.tez.runtime.api.impl.InputSpec;
 import org.apache.tez.runtime.api.impl.TaskSpec;
+import org.apache.tez.serviceplugins.api.DagInfo;
 import org.apache.tez.serviceplugins.api.TaskAttemptEndReason;
 import org.apache.tez.serviceplugins.api.TaskCommunicatorContext;
 import org.junit.Test;
@@ -272,15 +276,23 @@ public class TestLlapTaskCommunicator {
     final TezVertexID vertexId1 = TezVertexID.getInstance(dagid, 300);
     final TezVertexID vertexId2 = TezVertexID.getInstance(dagid, 301);
     final Configuration conf = new Configuration(false);
-    final UserPayload userPayload = TezUtils.createUserPayloadFromConf(conf);
+    final UserPayload userPayload;
 
     final LlapTaskCommunicatorForTest taskCommunicator;
 
     public LlapTaskCommunicatorWrapperForTest(LlapProtocolClientProxy llapProxy) throws Exception {
+
+      HiveConf.setVar(conf, HiveConf.ConfVars.LLAP_DAEMON_SERVICE_HOSTS, "fake-non-zk-cluster");
+      userPayload = TezUtils.createUserPayloadFromConf(conf);
+
       doReturn(appAttemptId).when(taskCommunicatorContext).getApplicationAttemptId();
-      doReturn(new Credentials()).when(taskCommunicatorContext).getCredentials();
+      doReturn(new Credentials()).when(taskCommunicatorContext).getAMCredentials();
       doReturn(userPayload).when(taskCommunicatorContext).getInitialUserPayload();
       doReturn(appId.toString()).when(taskCommunicatorContext).getCurrentAppIdentifier();
+      DagInfo dagInfo = mock(DagInfo.class);
+      doReturn(dagInfo).when(taskCommunicatorContext).getCurrentDagInfo();
+      doReturn(DAG_NAME).when(dagInfo).getName();
+      doReturn(new Credentials()).when(dagInfo).getCredentials();
       doReturn(new LinkedList<String>()).when(taskCommunicatorContext)
           .getInputVertexNames(any(String.class));
 
@@ -341,11 +353,21 @@ public class TestLlapTaskCommunicator {
 
     private TaskSpec createBaseTaskSpec(String vertexName, TezVertexID vertexId, int taskIdx) {
       TaskSpec taskSpec = mock(TaskSpec.class);
+      Configuration conf = new Configuration(false);
+      HiveConf.setVar(conf, HiveConf.ConfVars.HIVEQUERYID, "fakeQueryId");
+      UserPayload userPayload;
+      try {
+        userPayload = TezUtils.createUserPayloadFromConf(conf);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
       TezTaskAttemptID taskAttemptId = TezTaskAttemptID.getInstance(
           TezTaskID.getInstance(vertexId, taskIdx), 0);
       doReturn(taskAttemptId).when(taskSpec).getTaskAttemptID();
       doReturn(DAG_NAME).when(taskSpec).getDAGName();
       doReturn(vertexName).when(taskSpec).getVertexName();
+      ProcessorDescriptor processorDescriptor = ProcessorDescriptor.create("fakeClassName").setUserPayload(userPayload);
+      doReturn(processorDescriptor).when(taskSpec).getProcessorDescriptor();
       return taskSpec;
     }
   }
@@ -394,6 +416,11 @@ public class TestLlapTaskCommunicator {
     @Override
     public InetSocketAddress getAddress() {
       return InetSocketAddress.createUnresolved("localhost", 15001);
+    }
+
+    @Override
+    public String getAmHostString() {
+      return "localhost";
     }
   }
 

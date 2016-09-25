@@ -386,16 +386,14 @@ from (
   select transform(key, value) using 'cat' as (key2, value2)
   from src
   UNION DISTINCT 
-  select key as key2, value as value2 from src) s
-order by s.key2, s.value2;
+  select key as key2, value as value2 from src) s;
 
 select s.key2, s.value2
 from (
   select transform(key, value) using 'cat' as (key2, value2)
   from src
   UNION DISTINCT 
-  select key as key2, value as value2 from src) s
-order by s.key2, s.value2;
+  select key as key2, value as value2 from src) s;
 
 -- union24.q
 
@@ -496,9 +494,12 @@ FROM
   ) master_table
 ) a GROUP BY key, value
 ;
+
+set hive.stats.fetch.column.stats=false;
 -- union26.q
 
 -- SORT_QUERY_RESULTS
+
 
 EXPLAIN
 SELECT 
@@ -545,6 +546,7 @@ WHERE ds='2008-04-08' and hr='11'
 group by key, value
 ;
 
+set hive.stats.fetch.column.stats=true;
 
 SELECT 
 count(1) as counts,
@@ -870,8 +872,7 @@ EXPLAIN
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
 UNION DISTINCT
-SELECT CAST(key AS BIGINT) AS key FROM t2) a
-ORDER BY key;
+SELECT CAST(key AS BIGINT) AS key FROM t2) a;
 
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key FROM t1
@@ -910,13 +911,13 @@ SELECT CAST(a.key AS BIGINT) AS key FROM t1 a JOIN t2 b ON a.key = b.key) a
 -- Test union with join on the left selecting multiple columns
 EXPLAIN
 SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS STRING) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 ;
 
 SELECT * FROM 
-(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key
+(SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS CHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key
 UNION DISTINCT
 SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2) a
 ;
@@ -926,13 +927,13 @@ EXPLAIN
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 ;
 
 SELECT * FROM 
 (SELECT CAST(key AS DOUBLE) AS key, CAST(key AS STRING) AS value FROM t2
 UNION DISTINCT
-SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS DOUBLE) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
+SELECT CAST(a.key AS BIGINT) AS key, CAST(b.key AS VARCHAR(20)) AS value FROM t1 a JOIN t2 b ON a.key = b.key) a
 ;
 -- union33.q
 
@@ -949,7 +950,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a;
  
@@ -958,7 +959,7 @@ SELECT key, value FROM (
 	SELECT key, value FROM src 
 	WHERE key = 0
 UNION DISTINCT
- 	SELECT key, COUNT(*) AS value FROM src
+ 	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 )a;
  
@@ -966,7 +967,7 @@ SELECT COUNT(*) FROM test_src;
  
 EXPLAIN INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -975,7 +976,7 @@ UNION DISTINCT
  
 INSERT OVERWRITE TABLE test_src 
 SELECT key, value FROM (
-	SELECT key, COUNT(*) AS value FROM src
+	SELECT key, cast(COUNT(*) as string) AS value FROM src
  	GROUP BY key
 UNION DISTINCT
  	SELECT key, value FROM src 
@@ -1009,13 +1010,13 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key;
+) alias1;
 
 SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key;
+) alias1;
 
 set hive.auto.convert.join=false;
 -- When we do not convert the Join of sub1 and sub0 into a MapJoin,
@@ -1027,13 +1028,13 @@ SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key;
+) alias1;
 
 SELECT * FROM (
   SELECT sub1.key,sub1.value FROM (SELECT * FROM src10_1) sub1 JOIN (SELECT * FROM src10_2) sub0 ON (sub0.key = sub1.key)
   UNION DISTINCT
   SELECT key,value FROM (SELECT * FROM (SELECT * FROM src10_3) sub2 UNION DISTINCT SELECT * FROM src10_4 ) alias0
-) alias1 order by key;
+) alias1;
 -- union4.q
 
  

@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.CharTypeInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
 import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
@@ -50,6 +51,8 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hive.common.util.DateUtils;
 
+import com.google.common.base.Preconditions;
+
 /**
  * Context for Vectorized row batch. this class does eager deserialization of row data using serde
  * in the RecordReader layer.
@@ -68,6 +71,7 @@ public class VectorizedRowBatchCtx {
   // It will be stored in MapWork and ReduceWork.
   private String[] rowColumnNames;
   private TypeInfo[] rowColumnTypeInfos;
+  private int[] dataColumnNums;
   private int dataColumnCount;
   private int partitionColumnCount;
 
@@ -80,9 +84,10 @@ public class VectorizedRowBatchCtx {
   }
 
   public VectorizedRowBatchCtx(String[] rowColumnNames, TypeInfo[] rowColumnTypeInfos,
-      int partitionColumnCount, String[] scratchColumnTypeNames) {
+      int[] dataColumnNums, int partitionColumnCount, String[] scratchColumnTypeNames) {
     this.rowColumnNames = rowColumnNames;
     this.rowColumnTypeInfos = rowColumnTypeInfos;
+    this.dataColumnNums = dataColumnNums;
     this.partitionColumnCount = partitionColumnCount;
     this.scratchColumnTypeNames = scratchColumnTypeNames;
 
@@ -95,6 +100,10 @@ public class VectorizedRowBatchCtx {
 
   public TypeInfo[] getRowColumnTypeInfos() {
     return rowColumnTypeInfos;
+  }
+
+  public int[] getDataColumnNums() {
+    return dataColumnNums;
   }
 
   public int getDataColumnCount() {
@@ -123,6 +132,7 @@ public class VectorizedRowBatchCtx {
     // Row column information.
     rowColumnNames = VectorizedBatchUtil.columnNamesFromStructObjectInspector(structObjectInspector);
     rowColumnTypeInfos = VectorizedBatchUtil.typeInfosFromStructObjectInspector(structObjectInspector);
+    dataColumnNums = null;
     partitionColumnCount = 0;
     dataColumnCount = rowColumnTypeInfos.length;
 
@@ -133,7 +143,7 @@ public class VectorizedRowBatchCtx {
   public static void getPartitionValues(VectorizedRowBatchCtx vrbCtx, Configuration hiveConf,
       FileSplit split, Object[] partitionValues) throws IOException {
 
-    Map<String, PartitionDesc> pathToPartitionInfo = Utilities
+    Map<Path, PartitionDesc> pathToPartitionInfo = Utilities
         .getMapWork(hiveConf).getPathToPartitionInfo();
 
     PartitionDesc partDesc = HiveFileFormatUtils
@@ -185,47 +195,30 @@ public class VectorizedRowBatchCtx {
    */
   public VectorizedRowBatch createVectorizedRowBatch()
   {
-    int totalColumnCount = rowColumnTypeInfos.length + scratchColumnTypeNames.length;
+    final int dataAndPartColumnCount = rowColumnTypeInfos.length;
+    final int totalColumnCount = dataAndPartColumnCount + scratchColumnTypeNames.length;
     VectorizedRowBatch result = new VectorizedRowBatch(totalColumnCount);
 
-    LOG.info("createVectorizedRowBatch columnsToIncludeTruncated NONE");
-    for (int i = 0; i < rowColumnTypeInfos.length; i++) {
-      TypeInfo typeInfo = rowColumnTypeInfos[i];
-      result.cols[i] = VectorizedBatchUtil.createColumnVector(typeInfo);
-    }
-
-    for (int i = 0; i < scratchColumnTypeNames.length; i++) {
-      String typeName = scratchColumnTypeNames[i];
-      result.cols[rowColumnTypeInfos.length + i] =
-          VectorizedBatchUtil.createColumnVector(typeName);
-    }
-
-    result.setPartitionInfo(dataColumnCount, partitionColumnCount);
-
-    result.reset();
-    return result;
-  }
-
-  public VectorizedRowBatch createVectorizedRowBatch(boolean[] columnsToIncludeTruncated)
-  {
-    if (columnsToIncludeTruncated == null) {
-      return createVectorizedRowBatch();
-    }
-
-    LOG.info("createVectorizedRowBatch columnsToIncludeTruncated " + Arrays.toString(columnsToIncludeTruncated));
-    int totalColumnCount = rowColumnTypeInfos.length + scratchColumnTypeNames.length;
-    VectorizedRowBatch result = new VectorizedRowBatch(totalColumnCount);
-
-    for (int i = 0; i < columnsToIncludeTruncated.length; i++) {
-      if (columnsToIncludeTruncated[i]) {
+    if (dataColumnNums == null) {
+        // All data and partition columns.
+      for (int i = 0; i < dataAndPartColumnCount; i++) {
         TypeInfo typeInfo = rowColumnTypeInfos[i];
         result.cols[i] = VectorizedBatchUtil.createColumnVector(typeInfo);
       }
-    }
-
-    for (int i = dataColumnCount; i < dataColumnCount + partitionColumnCount; i++) {
-      TypeInfo typeInfo = rowColumnTypeInfos[i];
-      result.cols[i] = VectorizedBatchUtil.createColumnVector(typeInfo);
+    } else {
+      // Create only needed/included columns data columns.
+      for (int i = 0; i < dataColumnNums.length; i++) {
+        int columnNum = dataColumnNums[i];
+        Preconditions.checkState(columnNum < dataAndPartColumnCount);
+        TypeInfo typeInfo = rowColumnTypeInfos[columnNum];
+        result.cols[columnNum] = VectorizedBatchUtil.createColumnVector(typeInfo);
+      }
+      // Always create partition columns.
+      final int endColumnNum = dataColumnCount + partitionColumnCount;
+      for (int partitionColumnNum = dataColumnCount; partitionColumnNum < endColumnNum; partitionColumnNum++) {
+        TypeInfo typeInfo = rowColumnTypeInfos[partitionColumnNum];
+        result.cols[partitionColumnNum] = VectorizedBatchUtil.createColumnVector(typeInfo);
+      }
     }
 
     for (int i = 0; i < scratchColumnTypeNames.length; i++) {
@@ -238,45 +231,6 @@ public class VectorizedRowBatchCtx {
 
     result.reset();
     return result;
-  }
-
-  public boolean[] getColumnsToIncludeTruncated(Configuration conf) {
-    boolean[] columnsToIncludeTruncated = null;
-
-    List<Integer> columnsToIncludeTruncatedList = ColumnProjectionUtils.getReadColumnIDs(conf);
-    if (columnsToIncludeTruncatedList != null && columnsToIncludeTruncatedList.size() > 0 ) {
-
-      // Partitioned columns will not be in the include list.
-
-      boolean[] columnsToInclude = new boolean[dataColumnCount];
-      Arrays.fill(columnsToInclude, false);
-      for (int columnNum : columnsToIncludeTruncatedList) {
-        if (columnNum < dataColumnCount) {
-          columnsToInclude[columnNum] = true;
-        }
-      }
-
-      // Work backwards to find the highest wanted column.
-
-      int highestWantedColumnNum = -1;
-      for (int i = dataColumnCount - 1; i >= 0; i--) {
-        if (columnsToInclude[i]) {
-          highestWantedColumnNum = i;
-          break;
-        }
-      }
-      if (highestWantedColumnNum == -1) {
-        throw new RuntimeException("No columns to include?");
-      }
-      int newColumnCount = highestWantedColumnNum + 1;
-      if (newColumnCount == dataColumnCount) {
-        // Didn't trim any columns off the end.  Use the original.
-        columnsToIncludeTruncated = columnsToInclude;
-      } else {
-        columnsToIncludeTruncated = Arrays.copyOf(columnsToInclude, newColumnCount);
-      }
-    }
-    return columnsToIncludeTruncated;
   }
 
   /**
@@ -302,72 +256,72 @@ public class VectorizedRowBatchCtx {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill((Boolean) value == true ? 1 : 0);
             lcv.isNull[0] = false;
           }
         }
-        break;          
-        
+        break;
+
         case BYTE: {
           LongColumnVector lcv = (LongColumnVector) batch.cols[colIndex];
           if (value == null) {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill((Byte) value);
             lcv.isNull[0] = false;
           }
         }
-        break;             
-        
+        break;
+
         case SHORT: {
           LongColumnVector lcv = (LongColumnVector) batch.cols[colIndex];
           if (value == null) {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill((Short) value);
             lcv.isNull[0] = false;
           }
         }
         break;
-        
+
         case INT: {
           LongColumnVector lcv = (LongColumnVector) batch.cols[colIndex];
           if (value == null) {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill((Integer) value);
             lcv.isNull[0] = false;
-          }          
+          }
         }
         break;
-        
+
         case LONG: {
           LongColumnVector lcv = (LongColumnVector) batch.cols[colIndex];
           if (value == null) {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill((Long) value);
             lcv.isNull[0] = false;
-          }          
+          }
         }
         break;
-        
+
         case DATE: {
           LongColumnVector lcv = (LongColumnVector) batch.cols[colIndex];
           if (value == null) {
             lcv.noNulls = false;
             lcv.isNull[0] = true;
             lcv.isRepeating = true;
-          } else { 
+          } else {
             lcv.fill(DateWritable.dateToDays((Date) value));
             lcv.isNull[0] = false;
           }
@@ -420,10 +374,10 @@ public class VectorizedRowBatchCtx {
           } else {
             dcv.fill((Float) value);
             dcv.isNull[0] = false;
-          }          
+          }
         }
         break;
-        
+
         case DOUBLE: {
           DoubleColumnVector dcv = (DoubleColumnVector) batch.cols[colIndex];
           if (value == null) {
@@ -436,7 +390,7 @@ public class VectorizedRowBatchCtx {
           }
         }
         break;
-        
+
         case DECIMAL: {
           DecimalColumnVector dv = (DecimalColumnVector) batch.cols[colIndex];
           if (value == null) {
@@ -476,8 +430,8 @@ public class VectorizedRowBatchCtx {
             bcv.isNull[0] = true;
             bcv.isRepeating = true;
           } else {
-            bcv.fill(sVal.getBytes());
-            bcv.isNull[0] = false;
+            bcv.setVal(0, sVal.getBytes());
+            bcv.isRepeating = true;
           }
         }
         break;

@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.apache.hive.hcatalog</groupId>
     <artifactId>hive-hcatalog</artifactId>
-    <version>2.1.0-SNAPSHOT</version>
+    <version>2.2.0-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -78,7 +78,7 @@
         in Pig which requires it This is fixed in Pig's pom file in ASF trunk (pig 13)-->
       <groupId>joda-time</groupId>
       <artifactId>joda-time</artifactId>
-      <version>2.2</version>
+      <version>${joda.version}</version>
     </dependency>
 
     <!-- test intra-project -->

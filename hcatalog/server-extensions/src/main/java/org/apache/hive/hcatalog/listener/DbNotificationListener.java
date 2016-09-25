@@ -61,6 +61,8 @@ public class DbNotificationListener extends MetaStoreEventListener {
   private static final Logger LOG = LoggerFactory.getLogger(DbNotificationListener.class.getName());
   private static CleanerThread cleaner = null;
 
+  private static final Object NOTIFICATION_TBL_LOCK = new Object();
+
   // This is the same object as super.conf, but it's convenient to keep a copy of it as a
   // HiveConf rather than a Configuration.
   private HiveConf hiveConf;
@@ -252,7 +254,9 @@ public class DbNotificationListener extends MetaStoreEventListener {
 
   private void enqueue(NotificationEvent event) {
     if (rs != null) {
-      rs.addNotificationEvent(event);
+      synchronized(NOTIFICATION_TBL_LOCK) {
+        rs.addNotificationEvent(event);
+      }
     } else {
       LOG.warn("Dropping event " + event + " since notification is not running.");
     }
@@ -261,7 +265,7 @@ public class DbNotificationListener extends MetaStoreEventListener {
   private static class CleanerThread extends Thread {
     private RawStore rs;
     private int ttl;
-
+    static private long sleepTime = 60000;
 
     CleanerThread(HiveConf conf, RawStore rs) {
       super("CleanerThread");
@@ -274,9 +278,12 @@ public class DbNotificationListener extends MetaStoreEventListener {
     @Override
     public void run() {
       while (true) {
-        rs.cleanNotificationEvents(ttl);
+        synchronized(NOTIFICATION_TBL_LOCK) {
+          rs.cleanNotificationEvents(ttl);
+        }
+        LOG.debug("Cleaner thread done");
         try {
-          Thread.sleep(60000);
+          Thread.sleep(sleepTime);
         } catch (InterruptedException e) {
           LOG.info("Cleaner thread sleep interupted", e);
         }

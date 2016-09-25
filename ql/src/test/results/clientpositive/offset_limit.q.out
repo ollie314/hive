@@ -31,6 +31,7 @@ STAGE PLANS:
                   sort order: +
                   Map-reduce partition columns: _col0 (type: string)
                   Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+                  TopN Hash Memory Usage: 0.1
                   value expressions: _col1 (type: double)
       Reduce Operator Tree:
         Group By Operator
@@ -167,6 +168,24 @@ POSTHOOK: Input: default@src
 96	96.0
 97	194.0
 98	196.0
+PREHOOK: query: SELECT src.key, sum(substr(src.value,5)) FROM src GROUP BY src.key ORDER BY src.key LIMIT 10,10
+PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+#### A masked pattern was here ####
+POSTHOOK: query: SELECT src.key, sum(substr(src.value,5)) FROM src GROUP BY src.key ORDER BY src.key LIMIT 10,10
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+#### A masked pattern was here ####
+116	116.0
+118	236.0
+119	357.0
+12	24.0
+120	240.0
+125	250.0
+126	126.0
+128	384.0
+129	258.0
+131	131.0
 PREHOOK: query: SELECT src.key, sum(substr(src.value,5)) FROM src GROUP BY src.key ORDER BY src.key LIMIT 10,10
 PREHOOK: type: QUERY
 PREHOOK: Input: default@src

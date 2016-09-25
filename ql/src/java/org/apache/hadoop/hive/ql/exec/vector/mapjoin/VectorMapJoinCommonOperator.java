@@ -571,7 +571,8 @@ public abstract class VectorMapJoinCommonOperator extends MapJoinOperator implem
           new VectorDeserializeRow<LazyBinaryDeserializeRead>(
               new LazyBinaryDeserializeRead(
                   VectorizedBatchUtil.typeInfosFromTypeNames(
-                      smallTableMapping.getTypeNames())));
+                      smallTableMapping.getTypeNames()),
+                      /* useExternalBuffer */ true));
       smallTableVectorDeserializeRow.init(smallTableMapping.getOutputColumns());
     }
 
@@ -636,6 +637,7 @@ public abstract class VectorMapJoinCommonOperator extends MapJoinOperator implem
     default:
       throw new RuntimeException("Unknown vector map join hash table implementation type " + hashTableImplementationType.name());
     }
+    LOG.info("Using " + vectorMapJoinHashTable.getClass().getSimpleName() + " from " + this.getClass().getSimpleName());
   }
 
   /*

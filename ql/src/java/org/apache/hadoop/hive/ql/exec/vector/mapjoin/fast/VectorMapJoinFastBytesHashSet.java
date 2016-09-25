@@ -27,7 +27,9 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hive.common.util.HashCodeUtil;
 
 /*
- * An single byte array value hash multi-set optimized for vector map join.
+ * An bytes key hash set optimized for vector map join.
+ *
+ * This is the abstract base for the multi-key and string bytes key hash set implementations.
  */
 public abstract class VectorMapJoinFastBytesHashSet
         extends VectorMapJoinFastBytesHashTable
@@ -50,7 +52,6 @@ public abstract class VectorMapJoinFastBytesHashSet
       slotTriples[tripleIndex] = keyStore.add(keyBytes, keyStart, keyLength);
       slotTriples[tripleIndex + 1] = hashCode;
       slotTriples[tripleIndex + 2] = 1;    // Existence
-      keysAssigned++;
     }
   }
 
@@ -64,7 +65,7 @@ public abstract class VectorMapJoinFastBytesHashSet
     optimizedHashSetResult.forget();
 
     long hashCode = HashCodeUtil.murmurHash(keyBytes, keyStart, keyLength);
-    long existance = findReadSlot(keyBytes, keyStart, keyLength, hashCode);
+    long existance = findReadSlot(keyBytes, keyStart, keyLength, hashCode, hashSetResult.getReadPos());
     JoinUtil.JoinResult joinResult;
     if (existance == -1) {
       joinResult = JoinUtil.JoinResult.NOMATCH;

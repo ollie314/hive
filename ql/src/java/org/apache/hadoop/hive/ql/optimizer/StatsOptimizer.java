@@ -22,7 +22,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +29,6 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsData;
@@ -48,6 +45,7 @@ import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.lib.DefaultGraphWalker;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
 import org.apache.hadoop.hive.ql.lib.Dispatcher;
@@ -67,6 +65,7 @@ import org.apache.hadoop.hive.ql.plan.AggregationDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDescUtils;
 import org.apache.hadoop.hive.ql.plan.FetchWork;
 import org.apache.hadoop.hive.ql.plan.GroupByDesc;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFCount;
@@ -81,6 +80,8 @@ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.Pr
 import org.apache.hadoop.hive.serde2.objectinspector.StandardStructObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.thrift.TException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
@@ -213,13 +214,17 @@ public class StatsOptimizer extends Transform {
 
     private boolean hasNullOrConstantGbyKey(GroupByOperator gbyOp) {
       GroupByDesc gbyDesc = gbyOp.getConf();
+      int numCols = gbyDesc.getOutputColumnNames().size();
+      int aggCols = gbyDesc.getAggregators().size();
       // If the Group by operator has null key
-      if (gbyDesc.getOutputColumnNames().size() ==
-        gbyDesc.getAggregators().size()) {
+      if (numCols == aggCols) {
         return true;
       }
-      for (ExprNodeDesc en :gbyDesc.getKeys()) {
-        if (!(en instanceof ExprNodeConstantDesc)) {
+      // If the Gby key is a constant
+      List<String> dpCols = gbyOp.getSchema().getColumnNames().subList(0, numCols - aggCols);
+      for(String dpCol : dpCols) {
+        ExprNodeDesc end = ExprNodeDescUtils.findConstantExprOrigin(dpCol, gbyOp);
+        if (!(end instanceof ExprNodeConstantDesc)) {
           return false;
         }
       }
@@ -314,6 +319,10 @@ public class StatsOptimizer extends Transform {
         }
 
         Table tbl = tsOp.getConf().getTableMetadata();
+        if (AcidUtils.isAcidTable(tbl)) {
+          Logger.info("Table " + tbl.getTableName() + " is ACID table. Skip StatsOptimizer.");
+          return null;
+        }
         List<Object> oneRow = new ArrayList<Object>();
 
         Hive hive = Hive.get(pctx.getConf());
@@ -362,20 +371,37 @@ public class StatsOptimizer extends Transform {
           else if (udaf instanceof GenericUDAFCount) {
             // always long
             Long rowCnt = 0L;
-            if (aggr.getParameters().isEmpty() || aggr.getParameters().get(0) instanceof
-                ExprNodeConstantDesc || ((aggr.getParameters().get(0) instanceof ExprNodeColumnDesc) &&
-                    exprMap.get(((ExprNodeColumnDesc)aggr.getParameters().get(0)).getColumn()) instanceof ExprNodeConstantDesc)) {
-              // Its either count (*) or count(1) case
+            if (aggr.getParameters().isEmpty()) {
+              // Its either count (*) or count() case
               rowCnt = getRowCnt(pctx, tsOp, tbl);
-              if(rowCnt == null) {
+              if (rowCnt == null) {
                 return null;
+              }
+            } else if (aggr.getParameters().get(0) instanceof ExprNodeConstantDesc) {
+              if (((ExprNodeConstantDesc) aggr.getParameters().get(0)).getValue() != null) {
+                // count (1)
+                rowCnt = getRowCnt(pctx, tsOp, tbl);
+                if (rowCnt == null) {
+                  return null;
+                }
+              }
+              // otherwise it is count(null), should directly return 0.
+            } else if ((aggr.getParameters().get(0) instanceof ExprNodeColumnDesc)
+                && exprMap.get(((ExprNodeColumnDesc) aggr.getParameters().get(0)).getColumn()) instanceof ExprNodeConstantDesc) {
+              if (((ExprNodeConstantDesc) (exprMap.get(((ExprNodeColumnDesc) aggr.getParameters()
+                  .get(0)).getColumn()))).getValue() != null) {
+                rowCnt = getRowCnt(pctx, tsOp, tbl);
+                if (rowCnt == null) {
+                  return null;
+                }
               }
             } else {
               // Its count(col) case
-              ExprNodeColumnDesc desc = (ExprNodeColumnDesc)exprMap.get(((ExprNodeColumnDesc)aggr.getParameters().get(0)).getColumn());
+              ExprNodeColumnDesc desc = (ExprNodeColumnDesc) exprMap.get(((ExprNodeColumnDesc) aggr
+                  .getParameters().get(0)).getColumn());
               String colName = desc.getColumn();
               StatType type = getType(desc.getTypeString());
-              if(!tbl.isPartitioned()) {
+              if (!tbl.isPartitioned()) {
                 if (!StatsSetupConst.areBasicStatsUptoDate(tbl.getParameters())) {
                   Logger.debug("Stats for table : " + tbl.getTableName() + " are not up to date.");
                   return null;
@@ -391,47 +417,48 @@ public class StatsOptimizer extends Transform {
                   return null;
                 }
                 List<ColumnStatisticsObj> stats = hive.getMSC().getTableColumnStatistics(
-                    tbl.getDbName(),tbl.getTableName(), Lists.newArrayList(colName));
+                    tbl.getDbName(), tbl.getTableName(), Lists.newArrayList(colName));
                 if (stats.isEmpty()) {
                   Logger.debug("No stats for " + tbl.getTableName() + " column " + colName);
                   return null;
                 }
                 Long nullCnt = getNullcountFor(type, stats.get(0).getStatsData());
                 if (null == nullCnt) {
-                  Logger.debug("Unsupported type: " + desc.getTypeString() + " encountered in " +
-                      "metadata optimizer for column : " + colName);
+                  Logger.debug("Unsupported type: " + desc.getTypeString() + " encountered in "
+                      + "metadata optimizer for column : " + colName);
                   return null;
                 } else {
                   rowCnt -= nullCnt;
                 }
               } else {
-                Set<Partition> parts = pctx.getPrunedPartitions(
-                    tsOp.getConf().getAlias(), tsOp).getPartitions();
+                Set<Partition> parts = pctx.getPrunedPartitions(tsOp.getConf().getAlias(), tsOp)
+                    .getPartitions();
                 for (Partition part : parts) {
                   if (!StatsSetupConst.areBasicStatsUptoDate(part.getParameters())) {
                     Logger.debug("Stats for part : " + part.getSpec() + " are not up to date.");
                     return null;
                   }
-                  Long partRowCnt = Long.parseLong(part.getParameters()
-                      .get(StatsSetupConst.ROW_COUNT));
+                  Long partRowCnt = Long.parseLong(part.getParameters().get(
+                      StatsSetupConst.ROW_COUNT));
                   if (partRowCnt == null) {
                     Logger.debug("Partition doesn't have up to date stats " + part.getSpec());
                     return null;
                   }
                   rowCnt += partRowCnt;
                 }
-                Collection<List<ColumnStatisticsObj>> result =
-                    verifyAndGetPartColumnStats(hive, tbl, colName, parts);
+                Collection<List<ColumnStatisticsObj>> result = verifyAndGetPartColumnStats(hive,
+                    tbl, colName, parts);
                 if (result == null) {
                   return null; // logging inside
                 }
                 for (List<ColumnStatisticsObj> statObj : result) {
                   ColumnStatisticsData statData = validateSingleColStat(statObj);
-                  if (statData == null) return null;
+                  if (statData == null)
+                    return null;
                   Long nullCnt = getNullcountFor(type, statData);
                   if (nullCnt == null) {
-                    Logger.debug("Unsupported type: " + desc.getTypeString() + " encountered in " +
-                        "metadata optimizer for column : " + colName);
+                    Logger.debug("Unsupported type: " + desc.getTypeString() + " encountered in "
+                        + "metadata optimizer for column : " + colName);
                     return null;
                   } else {
                     rowCnt -= nullCnt;

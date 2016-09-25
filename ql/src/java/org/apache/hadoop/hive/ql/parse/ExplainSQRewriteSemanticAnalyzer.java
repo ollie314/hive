@@ -19,8 +19,8 @@
 
 import java.util.List;
 
-import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.ExplainSQRewriteTask;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.plan.ExplainSQRewriteWork;
@@ -28,21 +28,20 @@ import org.apache.hadoop.hive.ql.plan.ExplainSQRewriteWork;
 public class ExplainSQRewriteSemanticAnalyzer extends BaseSemanticAnalyzer {
   List<FieldSchema> fieldList;
 
-  public ExplainSQRewriteSemanticAnalyzer(HiveConf conf) throws SemanticException {
-    super(conf);
+  public ExplainSQRewriteSemanticAnalyzer(QueryState queryState) throws SemanticException {
+    super(queryState);
   }
 
   @SuppressWarnings("unchecked")
   @Override
   public void analyzeInternal(ASTNode ast) throws SemanticException {
 
-
-    ctx.setExplain(true);
+    ctx.setExplainConfig(new ExplainConfiguration());
 
     // Create a semantic analyzer for the query
     ASTNode input = (ASTNode) ast.getChild(0);
     SemanticAnalyzer sem = (SemanticAnalyzer)
-        SemanticAnalyzerFactory.get(conf, input);
+        SemanticAnalyzerFactory.get(queryState, input);
     sem.analyze(input, ctx);
     sem.validate();
 

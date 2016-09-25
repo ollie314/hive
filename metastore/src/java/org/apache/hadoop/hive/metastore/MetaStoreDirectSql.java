@@ -88,14 +88,6 @@ import com.google.common.collect.Lists;
  * to SQL stores only. There's always a way to do without direct SQL.
  */
 class MetaStoreDirectSql {
-  private static enum DB {
-    MYSQL,
-    ORACLE,
-    MSSQL,
-    DERBY,
-    OTHER
-  }
-
   private static final int NO_BATCHING = -1, DETECT_BATCHING = 0;
 
   private static final Logger LOG = LoggerFactory.getLogger(MetaStoreDirectSql.class);
@@ -109,7 +101,7 @@ class MetaStoreDirectSql {
    *
    * Use sparingly, we don't want to devolve into another DataNucleus...
    */
-  private final DB dbType;
+  private final DatabaseProduct dbType;
   private final int batchSize;
   private final boolean convertMapNullsToEmptyStrings;
   private final String defaultPartName;
@@ -123,10 +115,17 @@ class MetaStoreDirectSql {
 
   public MetaStoreDirectSql(PersistenceManager pm, Configuration conf) {
     this.pm = pm;
-    this.dbType = determineDbType();
+    DatabaseProduct dbType = null;
+    try {
+      dbType = DatabaseProduct.determineDatabaseProduct(getProductName());
+    } catch (SQLException e) {
+      LOG.warn("Cannot determine database product; assuming OTHER", e);
+      dbType = DatabaseProduct.OTHER;
+    }
+    this.dbType = dbType;
     int batchSize = HiveConf.getIntVar(conf, ConfVars.METASTORE_DIRECT_SQL_PARTITION_BATCH_SIZE);
     if (batchSize == DETECT_BATCHING) {
-      batchSize = (dbType == DB.ORACLE || dbType == DB.MSSQL) ? 1000 : NO_BATCHING;
+      batchSize = DatabaseProduct.needsInBatching(dbType) ? 1000 : NO_BATCHING;
     }
     this.batchSize = batchSize;
 
@@ -136,7 +135,7 @@ class MetaStoreDirectSql {
 
     String jdoIdFactory = HiveConf.getVar(conf, ConfVars.METASTORE_IDENTIFIER_FACTORY);
     if (! ("datanucleus1".equalsIgnoreCase(jdoIdFactory))){
-      LOG.warn("Underlying metastore does not use 'datanuclues1' for its ORM naming scheme."
+      LOG.warn("Underlying metastore does not use 'datanucleus1' for its ORM naming scheme."
           + " Disabling directSQL as it uses hand-hardcoded SQL with that assumption.");
       isCompatibleDatastore = false;
     } else {
@@ -146,28 +145,11 @@ class MetaStoreDirectSql {
       }
     }
 
-    isAggregateStatsCacheEnabled = HiveConf.getBoolVar(conf, ConfVars.METASTORE_AGGREGATE_STATS_CACHE_ENABLED);
+    isAggregateStatsCacheEnabled = HiveConf.getBoolVar(
+        conf, ConfVars.METASTORE_AGGREGATE_STATS_CACHE_ENABLED);
     if (isAggregateStatsCacheEnabled) {
       aggrStatsCache = AggregateStatsCache.getInstance(conf);
     }
-  }
-
-  private DB determineDbType() {
-    DB dbType = DB.OTHER;
-    String productName = getProductName();
-    if (productName != null) {
-      productName = productName.toLowerCase();
-      if (productName.contains("mysql")) {
-        dbType = DB.MYSQL;
-      } else if (productName.contains("oracle")) {
-        dbType = DB.ORACLE;
-      } else if (productName.contains("microsoft sql server")) {
-        dbType = DB.MSSQL;
-      } else if (productName.contains("derby")) {
-        dbType = DB.DERBY;
-      }
-    }
-    return dbType;
   }
 
   private String getProductName() {
@@ -370,41 +352,33 @@ class MetaStoreDirectSql {
 
   /**
    * Gets partitions by using direct SQL queries.
-   * @param table The table.
-   * @param tree The expression tree from which the SQL filter will be derived.
+   * @param filter The filter.
    * @param max The maximum number of partitions to return.
-   * @return List of partitions. Null if SQL filter cannot be derived.
+   * @return List of partitions.
    */
   public List<Partition> getPartitionsViaSqlFilter(
-      Table table, ExpressionTree tree, Integer max) throws MetaException {
-    assert tree != null;
-    List<Object> params = new ArrayList<Object>();
-    List<String> joins = new ArrayList<String>();
-    // Derby and Oracle do not interpret filters ANSI-properly in some cases and need a workaround.
-    boolean dbHasJoinCastBug = (dbType == DB.DERBY || dbType == DB.ORACLE);
-    String sqlFilter = PartitionFilterGenerator.generateSqlFilter(
-        table, tree, params, joins, dbHasJoinCastBug, defaultPartName, dbType);
-    if (sqlFilter == null) {
-      return null; // Cannot make SQL filter to push down.
-    }
-    Boolean isViewTable = isViewTable(table);
-    return getPartitionsViaSqlFilterInternal(table.getDbName(), table.getTableName(),
-        isViewTable, sqlFilter, params, joins, max);
+      SqlFilterForPushdown filter, Integer max) throws MetaException {
+    Boolean isViewTable = isViewTable(filter.table);
+    return getPartitionsViaSqlFilterInternal(filter.table.getDbName(), filter.table.getTableName(),
+        isViewTable, filter.filter, filter.params, filter.joins, max);
   }
 
-  public int getNumPartitionsViaSqlFilter(Table table, ExpressionTree tree) throws MetaException {
-    List<Object> params = new ArrayList<Object>();
-    List<String>joins = new ArrayList<String>();
-    // Derby and Oracle do not interpret filters ANSI-properly in some cases and need a workaround.
-    boolean dbHasJoinCastBug = (dbType == DB.DERBY || dbType == DB.ORACLE);
-    String sqlFilter = PartitionFilterGenerator.generateSqlFilter(
-        table, tree, params, joins, dbHasJoinCastBug, defaultPartName, dbType);
-    if (sqlFilter == null) {
-      return 0; // Cannot make SQL filter to push down.
-    }
-    return getNumPartitionsViaSqlFilterInternal(table.getDbName(), table.getTableName(), sqlFilter, params, joins);
+  public static class SqlFilterForPushdown {
+    private List<Object> params = new ArrayList<Object>();
+    private List<String> joins = new ArrayList<String>();
+    private String filter;
+    private Table table;
   }
 
+  public boolean generateSqlFilterForPushdown(
+      Table table, ExpressionTree tree, SqlFilterForPushdown result) throws MetaException {
+    // Derby and Oracle do not interpret filters ANSI-properly in some cases and need a workaround.
+    boolean dbHasJoinCastBug = DatabaseProduct.hasJoinOperationOrderBug(dbType);
+    result.table = table;
+    result.filter = PartitionFilterGenerator.generateSqlFilter(
+        table, tree, result.params, result.joins, dbHasJoinCastBug, defaultPartName, dbType);
+    return result.filter != null;
+  }
 
   /**
    * Gets all partitions of a table by using direct SQL queries.
@@ -827,12 +801,10 @@ class MetaStoreDirectSql {
     return orderedResult;
   }
 
-  private int getNumPartitionsViaSqlFilterInternal(String dbName, String tblName,
-                                                   String sqlFilter, List<Object> paramsForFilter,
-                                                   List<String> joinsForFilter) throws MetaException {
+  public int getNumPartitionsViaSqlFilter(SqlFilterForPushdown filter) throws MetaException {
     boolean doTrace = LOG.isDebugEnabled();
-    dbName = dbName.toLowerCase();
-    tblName = tblName.toLowerCase();
+    String dbName = filter.table.getDbName().toLowerCase();
+    String tblName = filter.table.getTableName().toLowerCase();
 
     // Get number of partitions by doing count on PART_ID.
     String queryText = "select count(\"PARTITIONS\".\"PART_ID\") from \"PARTITIONS\""
@@ -840,18 +812,19 @@ class MetaStoreDirectSql {
       + "    and \"TBLS\".\"TBL_NAME\" = ? "
       + "  inner join \"DBS\" on \"TBLS\".\"DB_ID\" = \"DBS\".\"DB_ID\" "
       + "     and \"DBS\".\"NAME\" = ? "
-      + join(joinsForFilter, ' ')
-      + (sqlFilter == null ? "" : (" where " + sqlFilter));
+      + join(filter.joins, ' ')
+      + (filter.filter == null || filter.filter.trim().isEmpty() ? "" : (" where " + filter.filter));
 
-    Object[] params = new Object[paramsForFilter.size() + 2];
+    Object[] params = new Object[filter.params.size() + 2];
     params[0] = tblName;
     params[1] = dbName;
-    for (int i = 0; i < paramsForFilter.size(); ++i) {
-      params[i + 2] = paramsForFilter.get(i);
+    for (int i = 0; i < filter.params.size(); ++i) {
+      params[i + 2] = filter.params.get(i);
     }
 
     long start = doTrace ? System.nanoTime() : 0;
     Query query = pm.newQuery("javax.jdo.query.SQL", queryText);
+    query.setUnique(true);
     int sqlResult = extractSqlInt(query.executeWithArray(params));
     long queryTime = doTrace ? System.nanoTime() : 0;
     timingTrace(doTrace, queryText, start, queryTime);
@@ -969,10 +942,10 @@ class MetaStoreDirectSql {
     private final List<String> joins;
     private final boolean dbHasJoinCastBug;
     private final String defaultPartName;
-    private final DB dbType;
+    private final DatabaseProduct dbType;
 
     private PartitionFilterGenerator(Table table, List<Object> params, List<String> joins,
-        boolean dbHasJoinCastBug, String defaultPartName, DB dbType) {
+        boolean dbHasJoinCastBug, String defaultPartName, DatabaseProduct dbType) {
       this.table = table;
       this.params = params;
       this.joins = joins;
@@ -990,9 +963,14 @@ class MetaStoreDirectSql {
      * @return the string representation of the expression tree
      */
     private static String generateSqlFilter(Table table, ExpressionTree tree, List<Object> params,
-        List<String> joins, boolean dbHasJoinCastBug, String defaultPartName, DB dbType)
-            throws MetaException {
+        List<String> joins, boolean dbHasJoinCastBug, String defaultPartName,
+        DatabaseProduct dbType) throws MetaException {
       assert table != null;
+      if (tree == null) {
+        // consistent with other APIs like makeExpressionTree, null is returned to indicate that
+        // the filter could not pushed down due to parsing issue etc
+        return null;
+      }
       if (tree.getRoot() == null) {
         return "";
       }
@@ -1133,7 +1111,7 @@ class MetaStoreDirectSql {
         if (colType == FilterType.Integral) {
           tableValue = "cast(" + tableValue + " as decimal(21,0))";
         } else if (colType == FilterType.Date) {
-          if (dbType == DB.ORACLE) {
+          if (dbType == DatabaseProduct.ORACLE) {
             // Oracle requires special treatment... as usual.
             tableValue = "TO_DATE(" + tableValue + ", 'YYYY-MM-DD')";
           } else {
@@ -1760,7 +1738,7 @@ class MetaStoreDirectSql {
    * effect will apply to the connection that is executing the queries otherwise.
    */
   public void prepareTxn() throws MetaException {
-    if (dbType != DB.MYSQL) return;
+    if (dbType != DatabaseProduct.MYSQL) return;
     try {
       assert pm.currentTransaction().isActive(); // must be inside tx together with queries
       executeNoResult("SET @@session.sql_mode=ANSI_QUOTES");
@@ -1819,23 +1797,27 @@ class MetaStoreDirectSql {
       "SELECT  \"D2\".\"NAME\", \"T2\".\"TBL_NAME\", \"C2\".\"COLUMN_NAME\","
       + "\"DBS\".\"NAME\", \"TBLS\".\"TBL_NAME\", \"COLUMNS_V2\".\"COLUMN_NAME\", "
       + "\"KEY_CONSTRAINTS\".\"POSITION\", \"KEY_CONSTRAINTS\".\"UPDATE_RULE\", \"KEY_CONSTRAINTS\".\"DELETE_RULE\", "
-      + "\"KEY_CONSTRAINTS\".\"CONSTRAINT_NAME\" , \"KEY_CONSTRAINTS2\".\"CONSTRAINT_NAME\", \"KEY_CONSTRAINTS\".\"ENABLE_VALIDATE_RELY\""
+      + "\"KEY_CONSTRAINTS\".\"CONSTRAINT_NAME\" , \"KEY_CONSTRAINTS2\".\"CONSTRAINT_NAME\", \"KEY_CONSTRAINTS\".\"ENABLE_VALIDATE_RELY\" "
       + " FROM \"TBLS\" "
       + " INNER JOIN \"KEY_CONSTRAINTS\" ON \"TBLS\".\"TBL_ID\" = \"KEY_CONSTRAINTS\".\"CHILD_TBL_ID\" "
       + " INNER JOIN \"KEY_CONSTRAINTS\" \"KEY_CONSTRAINTS2\" ON \"KEY_CONSTRAINTS2\".\"PARENT_TBL_ID\"  = \"KEY_CONSTRAINTS\".\"PARENT_TBL_ID\" "
+      + " AND \"KEY_CONSTRAINTS2\".\"PARENT_CD_ID\"  = \"KEY_CONSTRAINTS\".\"PARENT_CD_ID\" AND "
+      + " \"KEY_CONSTRAINTS2\".\"PARENT_INTEGER_IDX\"  = \"KEY_CONSTRAINTS\".\"PARENT_INTEGER_IDX\" "
       + " INNER JOIN \"DBS\" ON \"TBLS\".\"DB_ID\" = \"DBS\".\"DB_ID\" "
       + " INNER JOIN \"TBLS\" \"T2\" ON  \"KEY_CONSTRAINTS\".\"PARENT_TBL_ID\" = \"T2\".\"TBL_ID\" "
       + " INNER JOIN \"DBS\" \"D2\" ON \"T2\".\"DB_ID\" = \"D2\".\"DB_ID\" "
-      + " INNER JOIN \"COLUMNS_V2\"  ON \"COLUMNS_V2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"CHILD_CD_ID\" "
-      + " INNER JOIN \"COLUMNS_V2\" \"C2\" ON \"C2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"PARENT_CD_ID\" "
+      + " INNER JOIN \"COLUMNS_V2\"  ON \"COLUMNS_V2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"CHILD_CD_ID\" AND "
+      + " \"COLUMNS_V2\".\"INTEGER_IDX\" = \"KEY_CONSTRAINTS\".\"CHILD_INTEGER_IDX\" "
+      + " INNER JOIN \"COLUMNS_V2\" \"C2\" ON \"C2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"PARENT_CD_ID\" AND "
+      + " \"C2\".\"INTEGER_IDX\" = \"KEY_CONSTRAINTS\".\"PARENT_INTEGER_IDX\" "
       + " WHERE \"KEY_CONSTRAINTS\".\"CONSTRAINT_TYPE\" = "
       + MConstraint.FOREIGN_KEY_CONSTRAINT
       + " AND \"KEY_CONSTRAINTS2\".\"CONSTRAINT_TYPE\" = "
-      + MConstraint.PRIMARY_KEY_CONSTRAINT
-      + (foreign_db_name == null ? "" : "\"DBS\".\"NAME\" = ? AND")
-      + (foreign_tbl_name == null ? "" : " \"TBLS\".\"TBL_NAME\" = ? AND ")
-      + (parent_tbl_name == null ? "" : " \"T2\".\"TBL_NAME\" = ? AND ")
-      + (parent_db_name == null ? "" : "\"D2\".\"NAME\" = ?") ;
+      + MConstraint.PRIMARY_KEY_CONSTRAINT + " AND"
+      + (foreign_db_name == null ? "" : " \"DBS\".\"NAME\" = ? AND")
+      + (foreign_tbl_name == null ? "" : " \"TBLS\".\"TBL_NAME\" = ? AND")
+      + (parent_tbl_name == null ? "" : " \"T2\".\"TBL_NAME\" = ? AND")
+      + (parent_db_name == null ? "" : " \"D2\".\"NAME\" = ?") ;
 
     queryText = queryText.trim();
     if (queryText.endsWith("WHERE")) {
@@ -1899,8 +1881,8 @@ class MetaStoreDirectSql {
       + " FROM  \"TBLS\" "
       + " INNER  JOIN \"KEY_CONSTRAINTS\" ON \"TBLS\".\"TBL_ID\" = \"KEY_CONSTRAINTS\".\"PARENT_TBL_ID\" "
       + " INNER JOIN \"DBS\" ON \"TBLS\".\"DB_ID\" = \"DBS\".\"DB_ID\" "
-      + " INNER JOIN \"TBLS\" ON \"KEY_CONSTRAINTS\".\"PARENT_TBL_ID\" = \"TBLS\".\"TBL_ID\" "
-      + " INNER JOIN \"COLUMNS_V2\" ON \"COLUMNS_V2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"PARENT_CD_ID\" "
+      + " INNER JOIN \"COLUMNS_V2\" ON \"COLUMNS_V2\".\"CD_ID\" = \"KEY_CONSTRAINTS\".\"PARENT_CD_ID\" AND "
+      + " \"COLUMNS_V2\".\"INTEGER_IDX\" = \"KEY_CONSTRAINTS\".\"PARENT_INTEGER_IDX\" "
       + " WHERE \"KEY_CONSTRAINTS\".\"CONSTRAINT_TYPE\" = "+ MConstraint.PRIMARY_KEY_CONSTRAINT + " AND "
       + (db_name == null ? "" : "\"DBS\".\"NAME\" = ? AND")
       + (tbl_name == null ? "" : " \"TBLS\".\"TBL_NAME\" = ? ") ;
