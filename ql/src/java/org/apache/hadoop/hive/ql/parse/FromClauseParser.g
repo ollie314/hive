@@ -35,9 +35,6 @@ k=3;
       RecognitionException e) {
     gParent.errors.add(new ParseError(gParent, e, tokenNames));
   }
-  protected boolean useSQL11ReservedKeywordsForIdentifier() {
-    return gParent.useSQL11ReservedKeywordsForIdentifier();
-  }
 }
 
 @rulecatch {
@@ -222,7 +219,7 @@ subQuerySource
 @init { gParent.pushMsg("subquery source", state); }
 @after { gParent.popMsg(state); }
     :
-    LPAREN queryStatementExpression[false] RPAREN KW_AS? identifier -> ^(TOK_SUBQUERY queryStatementExpression identifier)
+    LPAREN queryStatementExpression RPAREN KW_AS? identifier -> ^(TOK_SUBQUERY queryStatementExpression identifier)
     ;
 
 //---------------------- Rules for parsing PTF clauses -----------------------------
