@@ -625,6 +625,8 @@ struct TxnInfo {
     5: optional string agentInfo = "Unknown",
     6: optional i32 heartbeatCount=0,
     7: optional string metaInfo,
+    8: optional i64 startedTime,
+    9: optional i64 lastHeartbeatTime,
 }
 
 struct GetOpenTxnsInfoResponse {
@@ -668,7 +670,8 @@ struct LockComponent {
     4: optional string tablename,
     5: optional string partitionname,
     6: optional DataOperationType operationType = DataOperationType.UNSET,
-    7: optional bool isAcid = false
+    7: optional bool isAcid = false,
+    8: optional bool isDynamicPartitionWrite = false
 }
 
 struct LockRequest {

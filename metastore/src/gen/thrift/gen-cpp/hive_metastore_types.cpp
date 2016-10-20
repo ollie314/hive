@@ -11579,6 +11579,16 @@ void TxnInfo::__set_metaInfo(const std::string& val) {
 __isset.metaInfo = true;
 }
 
+void TxnInfo::__set_startedTime(const int64_t val) {
+  this->startedTime = val;
+__isset.startedTime = true;
+}
+
+void TxnInfo::__set_lastHeartbeatTime(const int64_t val) {
+  this->lastHeartbeatTime = val;
+__isset.lastHeartbeatTime = true;
+}
+
 uint32_t TxnInfo::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -11662,6 +11672,22 @@ uint32_t TxnInfo::read(::apache::thrift::protocol::TProtocol* iprot) {
           xfer += iprot->skip(ftype);
         }
         break;
+      case 8:
+        if (ftype == ::apache::thrift::protocol::T_I64) {
+          xfer += iprot->readI64(this->startedTime);
+          this->__isset.startedTime = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 9:
+        if (ftype == ::apache::thrift::protocol::T_I64) {
+          xfer += iprot->readI64(this->lastHeartbeatTime);
+          this->__isset.lastHeartbeatTime = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
       default:
         xfer += iprot->skip(ftype);
         break;
@@ -11718,6 +11744,16 @@ uint32_t TxnInfo::write(::apache::thrift::protocol::TProtocol* oprot) const {
     xfer += oprot->writeString(this->metaInfo);
     xfer += oprot->writeFieldEnd();
   }
+  if (this->__isset.startedTime) {
+    xfer += oprot->writeFieldBegin("startedTime", ::apache::thrift::protocol::T_I64, 8);
+    xfer += oprot->writeI64(this->startedTime);
+    xfer += oprot->writeFieldEnd();
+  }
+  if (this->__isset.lastHeartbeatTime) {
+    xfer += oprot->writeFieldBegin("lastHeartbeatTime", ::apache::thrift::protocol::T_I64, 9);
+    xfer += oprot->writeI64(this->lastHeartbeatTime);
+    xfer += oprot->writeFieldEnd();
+  }
   xfer += oprot->writeFieldStop();
   xfer += oprot->writeStructEnd();
   return xfer;
@@ -11732,6 +11768,8 @@ void swap(TxnInfo &a, TxnInfo &b) {
   swap(a.agentInfo, b.agentInfo);
   swap(a.heartbeatCount, b.heartbeatCount);
   swap(a.metaInfo, b.metaInfo);
+  swap(a.startedTime, b.startedTime);
+  swap(a.lastHeartbeatTime, b.lastHeartbeatTime);
   swap(a.__isset, b.__isset);
 }
 
@@ -11743,6 +11781,8 @@ TxnInfo::TxnInfo(const TxnInfo& other507) {
   agentInfo = other507.agentInfo;
   heartbeatCount = other507.heartbeatCount;
   metaInfo = other507.metaInfo;
+  startedTime = other507.startedTime;
+  lastHeartbeatTime = other507.lastHeartbeatTime;
   __isset = other507.__isset;
 }
 TxnInfo& TxnInfo::operator=(const TxnInfo& other508) {
@@ -11753,6 +11793,8 @@ TxnInfo& TxnInfo::operator=(const TxnInfo& other508) {
   agentInfo = other508.agentInfo;
   heartbeatCount = other508.heartbeatCount;
   metaInfo = other508.metaInfo;
+  startedTime = other508.startedTime;
+  lastHeartbeatTime = other508.lastHeartbeatTime;
   __isset = other508.__isset;
   return *this;
 }
@@ -11766,6 +11808,8 @@ void TxnInfo::printTo(std::ostream& out) const {
   out << ", " << "agentInfo="; (__isset.agentInfo ? (out << to_string(agentInfo)) : (out << "<null>"));
   out << ", " << "heartbeatCount="; (__isset.heartbeatCount ? (out << to_string(heartbeatCount)) : (out << "<null>"));
   out << ", " << "metaInfo="; (__isset.metaInfo ? (out << to_string(metaInfo)) : (out << "<null>"));
+  out << ", " << "startedTime="; (__isset.startedTime ? (out << to_string(startedTime)) : (out << "<null>"));
+  out << ", " << "lastHeartbeatTime="; (__isset.lastHeartbeatTime ? (out << to_string(lastHeartbeatTime)) : (out << "<null>"));
   out << ")";
 }
 
@@ -12631,6 +12675,11 @@ void LockComponent::__set_isAcid(const bool val) {
 __isset.isAcid = true;
 }
 
+void LockComponent::__set_isDynamicPartitionWrite(const bool val) {
+  this->isDynamicPartitionWrite = val;
+__isset.isDynamicPartitionWrite = true;
+}
+
 uint32_t LockComponent::read(::apache::thrift::protocol::TProtocol* iprot) {
 
   apache::thrift::protocol::TInputRecursionTracker tracker(*iprot);
@@ -12717,6 +12766,14 @@ uint32_t LockComponent::read(::apache::thrift::protocol::TProtocol* iprot) {
           xfer += iprot->skip(ftype);
         }
         break;
+      case 8:
+        if (ftype == ::apache::thrift::protocol::T_BOOL) {
+          xfer += iprot->readBool(this->isDynamicPartitionWrite);
+          this->__isset.isDynamicPartitionWrite = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
       default:
         xfer += iprot->skip(ftype);
         break;
@@ -12772,6 +12829,11 @@ uint32_t LockComponent::write(::apache::thrift::protocol::TProtocol* oprot) cons
     xfer += oprot->writeBool(this->isAcid);
     xfer += oprot->writeFieldEnd();
   }
+  if (this->__isset.isDynamicPartitionWrite) {
+    xfer += oprot->writeFieldBegin("isDynamicPartitionWrite", ::apache::thrift::protocol::T_BOOL, 8);
+    xfer += oprot->writeBool(this->isDynamicPartitionWrite);
+    xfer += oprot->writeFieldEnd();
+  }
   xfer += oprot->writeFieldStop();
   xfer += oprot->writeStructEnd();
   return xfer;
@@ -12786,6 +12848,7 @@ void swap(LockComponent &a, LockComponent &b) {
   swap(a.partitionname, b.partitionname);
   swap(a.operationType, b.operationType);
   swap(a.isAcid, b.isAcid);
+  swap(a.isDynamicPartitionWrite, b.isDynamicPartitionWrite);
   swap(a.__isset, b.__isset);
 }
 
@@ -12797,6 +12860,7 @@ LockComponent::LockComponent(const LockComponent& other551) {
   partitionname = other551.partitionname;
   operationType = other551.operationType;
   isAcid = other551.isAcid;
+  isDynamicPartitionWrite = other551.isDynamicPartitionWrite;
   __isset = other551.__isset;
 }
 LockComponent& LockComponent::operator=(const LockComponent& other552) {
@@ -12807,6 +12871,7 @@ LockComponent& LockComponent::operator=(const LockComponent& other552) {
   partitionname = other552.partitionname;
   operationType = other552.operationType;
   isAcid = other552.isAcid;
+  isDynamicPartitionWrite = other552.isDynamicPartitionWrite;
   __isset = other552.__isset;
   return *this;
 }
@@ -12820,6 +12885,7 @@ void LockComponent::printTo(std::ostream& out) const {
   out << ", " << "partitionname="; (__isset.partitionname ? (out << to_string(partitionname)) : (out << "<null>"));
   out << ", " << "operationType="; (__isset.operationType ? (out << to_string(operationType)) : (out << "<null>"));
   out << ", " << "isAcid="; (__isset.isAcid ? (out << to_string(isAcid)) : (out << "<null>"));
+  out << ", " << "isDynamicPartitionWrite="; (__isset.isDynamicPartitionWrite ? (out << to_string(isDynamicPartitionWrite)) : (out << "<null>"));
   out << ")";
 }
 

@@ -4753,10 +4753,12 @@ inline std::ostream& operator<<(std::ostream& out, const Function& obj)
 }
 
 typedef struct _TxnInfo__isset {
-  _TxnInfo__isset() : agentInfo(true), heartbeatCount(true), metaInfo(false) {}
+  _TxnInfo__isset() : agentInfo(true), heartbeatCount(true), metaInfo(false), startedTime(false), lastHeartbeatTime(false) {}
   bool agentInfo :1;
   bool heartbeatCount :1;
   bool metaInfo :1;
+  bool startedTime :1;
+  bool lastHeartbeatTime :1;
 } _TxnInfo__isset;
 
 class TxnInfo {
@@ -4764,7 +4766,7 @@ class TxnInfo {
 
   TxnInfo(const TxnInfo&);
   TxnInfo& operator=(const TxnInfo&);
-  TxnInfo() : id(0), state((TxnState::type)0), user(), hostname(), agentInfo("Unknown"), heartbeatCount(0), metaInfo() {
+  TxnInfo() : id(0), state((TxnState::type)0), user(), hostname(), agentInfo("Unknown"), heartbeatCount(0), metaInfo(), startedTime(0), lastHeartbeatTime(0) {
   }
 
   virtual ~TxnInfo() throw();
@@ -4775,6 +4777,8 @@ class TxnInfo {
   std::string agentInfo;
   int32_t heartbeatCount;
   std::string metaInfo;
+  int64_t startedTime;
+  int64_t lastHeartbeatTime;
 
   _TxnInfo__isset __isset;
 
@@ -4791,6 +4795,10 @@ class TxnInfo {
   void __set_heartbeatCount(const int32_t val);
 
   void __set_metaInfo(const std::string& val);
+
+  void __set_startedTime(const int64_t val);
+
+  void __set_lastHeartbeatTime(const int64_t val);
 
   bool operator == (const TxnInfo & rhs) const
   {
@@ -4813,6 +4821,14 @@ class TxnInfo {
     if (__isset.metaInfo != rhs.__isset.metaInfo)
       return false;
     else if (__isset.metaInfo && !(metaInfo == rhs.metaInfo))
+      return false;
+    if (__isset.startedTime != rhs.__isset.startedTime)
+      return false;
+    else if (__isset.startedTime && !(startedTime == rhs.startedTime))
+      return false;
+    if (__isset.lastHeartbeatTime != rhs.__isset.lastHeartbeatTime)
+      return false;
+    else if (__isset.lastHeartbeatTime && !(lastHeartbeatTime == rhs.lastHeartbeatTime))
       return false;
     return true;
   }
@@ -5163,11 +5179,12 @@ inline std::ostream& operator<<(std::ostream& out, const CommitTxnRequest& obj)
 }
 
 typedef struct _LockComponent__isset {
-  _LockComponent__isset() : tablename(false), partitionname(false), operationType(true), isAcid(true) {}
+  _LockComponent__isset() : tablename(false), partitionname(false), operationType(true), isAcid(true), isDynamicPartitionWrite(true) {}
   bool tablename :1;
   bool partitionname :1;
   bool operationType :1;
   bool isAcid :1;
+  bool isDynamicPartitionWrite :1;
 } _LockComponent__isset;
 
 class LockComponent {
@@ -5175,7 +5192,7 @@ class LockComponent {
 
   LockComponent(const LockComponent&);
   LockComponent& operator=(const LockComponent&);
-  LockComponent() : type((LockType::type)0), level((LockLevel::type)0), dbname(), tablename(), partitionname(), operationType((DataOperationType::type)5), isAcid(false) {
+  LockComponent() : type((LockType::type)0), level((LockLevel::type)0), dbname(), tablename(), partitionname(), operationType((DataOperationType::type)5), isAcid(false), isDynamicPartitionWrite(false) {
     operationType = (DataOperationType::type)5;
 
   }
@@ -5188,6 +5205,7 @@ class LockComponent {
   std::string partitionname;
   DataOperationType::type operationType;
   bool isAcid;
+  bool isDynamicPartitionWrite;
 
   _LockComponent__isset __isset;
 
@@ -5204,6 +5222,8 @@ class LockComponent {
   void __set_operationType(const DataOperationType::type val);
 
   void __set_isAcid(const bool val);
+
+  void __set_isDynamicPartitionWrite(const bool val);
 
   bool operator == (const LockComponent & rhs) const
   {
@@ -5228,6 +5248,10 @@ class LockComponent {
     if (__isset.isAcid != rhs.__isset.isAcid)
       return false;
     else if (__isset.isAcid && !(isAcid == rhs.isAcid))
+      return false;
+    if (__isset.isDynamicPartitionWrite != rhs.__isset.isDynamicPartitionWrite)
+      return false;
+    else if (__isset.isDynamicPartitionWrite && !(isDynamicPartitionWrite == rhs.isDynamicPartitionWrite))
       return false;
     return true;
   }
