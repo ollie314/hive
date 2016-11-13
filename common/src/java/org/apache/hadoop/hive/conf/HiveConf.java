@@ -307,7 +307,8 @@ public class HiveConf extends Configuration {
       HiveConf.ConfVars.METASTORE_TRY_DIRECT_SQL,
       HiveConf.ConfVars.METASTORE_TRY_DIRECT_SQL_DDL,
       HiveConf.ConfVars.METASTORE_CLIENT_SOCKET_TIMEOUT,
-      HiveConf.ConfVars.METASTORE_PARTITION_NAME_WHITELIST_PATTERN
+      HiveConf.ConfVars.METASTORE_PARTITION_NAME_WHITELIST_PATTERN,
+      HiveConf.ConfVars.METASTORE_CAPABILITY_CHECK
   };
 
   static {
@@ -574,6 +575,8 @@ public class HiveConf extends Configuration {
     METASTOREURIS("hive.metastore.uris", "",
         "Thrift URI for the remote metastore. Used by metastore client to connect to remote metastore."),
 
+    METASTORE_CAPABILITY_CHECK("hive.metastore.client.capability.check", true,
+        "Whether to check client capabilities for potentially breaking API usage."),
     METASTORE_FASTPATH("hive.metastore.fastpath", false,
         "Used to avoid all of the proxies and object copies in the metastore.  Note, if this is " +
             "set, you MUST use a local metastore (hive.metastore.uris must be empty) otherwise " +
@@ -2958,8 +2961,8 @@ public class HiveConf extends Configuration {
     LLAP_DAEMON_NUM_EXECUTORS("hive.llap.daemon.num.executors", 4,
       "Number of executors to use in LLAP daemon; essentially, the number of tasks that can be\n" +
       "executed in parallel.", "llap.daemon.num.executors"),
-    LLAP_DAEMON_RPC_PORT("hive.llap.daemon.rpc.port", 15001, "The LLAP daemon RPC port.",
-      "llap.daemon.rpc.port"),
+    LLAP_DAEMON_RPC_PORT("hive.llap.daemon.rpc.port", 0, "The LLAP daemon RPC port.",
+      "llap.daemon.rpc.port. A value of 0 indicates a dynamic port"),
     LLAP_DAEMON_MEMORY_PER_INSTANCE_MB("hive.llap.daemon.memory.per.instance.mb", 3276,
       "The total amount of memory to use for the executors inside LLAP (in megabytes).",
       "llap.daemon.memory.per.instance.mb"),

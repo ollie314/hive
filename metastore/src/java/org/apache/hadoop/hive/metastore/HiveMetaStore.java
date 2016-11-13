@@ -18,6 +18,20 @@
 
 package org.apache.hadoop.hive.metastore;
 
+import java.io.FileInputStream;
+
+import java.io.File;
+
+import org.apache.hadoop.hive.metastore.api.MetaException;
+
+import java.io.FileNotFoundException;
+
+import org.apache.thrift.transport.TIOStreamTransport;
+
+import java.io.FileOutputStream;
+
+import java.io.BufferedOutputStream;
+
 import com.facebook.fb303.FacebookBase;
 import com.facebook.fb303.fb_status;
 import com.google.common.annotations.VisibleForTesting;
@@ -51,7 +65,6 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.*;
-import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.events.AddIndexEvent;
 import org.apache.hadoop.hive.metastore.events.AddPartitionEvent;
 import org.apache.hadoop.hive.metastore.events.AlterIndexEvent;
@@ -125,6 +138,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.security.PrivilegedExceptionAction;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.AbstractMap;
@@ -369,6 +383,7 @@ public class HiveMetaStore extends ThriftHiveMetastore {
     public HMSHandler(String name, HiveConf conf, boolean init) throws MetaException {
       super(name);
       hiveConf = conf;
+      isInTest = HiveConf.getBoolVar(hiveConf, ConfVars.HIVE_IN_TEST);
       synchronized (HMSHandler.class) {
         if (threadPool == null) {
           int numThreads = HiveConf.getIntVar(conf,
@@ -394,6 +409,7 @@ public class HiveMetaStore extends ThriftHiveMetastore {
     private List<MetaStoreEndFunctionListener> endFunctionListeners;
     private List<MetaStoreInitListener> initListeners;
     private Pattern partitionValidationPattern;
+    private final boolean isInTest;
 
     {
       classLoader = Thread.currentThread().getContextClassLoader();
@@ -1889,8 +1905,26 @@ public class HiveMetaStore extends ThriftHiveMetastore {
     }
 
     @Override
+    @Deprecated
     public Table get_table(final String dbname, final String name) throws MetaException,
         NoSuchObjectException {
+      return getTableInternal(dbname, name, null);
+    }
+
+    @Override
+    public GetTableResult get_table_req(GetTableRequest req) throws MetaException,
+        NoSuchObjectException {
+      return new GetTableResult(getTableInternal(req.getDbName(), req.getTblName(),
+          req.getCapabilities()));
+    }
+
+    private Table getTableInternal(String dbname, String name,
+        ClientCapabilities capabilities) throws MetaException, NoSuchObjectException {
+      if (isInTest) {
+        assertClientHasCapability(capabilities, ClientCapability.TEST_CAPABILITY,
+            "Hive tests", "get_table_req");
+      }
+
       Table t = null;
       startTableFunction("get_table", dbname, name);
       Exception ex = null;
@@ -1908,6 +1942,7 @@ public class HiveMetaStore extends ThriftHiveMetastore {
       }
       return t;
     }
+
 
     @Override
     public List<TableMeta> get_table_meta(String dbnames, String tblNames, List<String> tblTypes)
@@ -1974,8 +2009,26 @@ public class HiveMetaStore extends ThriftHiveMetastore {
      * @throws UnknownDBException
      */
     @Override
+    @Deprecated
     public List<Table> get_table_objects_by_name(final String dbName, final List<String> tableNames)
         throws MetaException, InvalidOperationException, UnknownDBException {
+      return getTableObjectsInternal(dbName, tableNames, null);
+    }
+
+    @Override
+    public GetTablesResult get_table_objects_by_name_req(GetTablesRequest req) throws TException {
+      return new GetTablesResult(getTableObjectsInternal(
+          req.getDbName(), req.getTblNames(), req.getCapabilities()));
+    }
+
+
+    private List<Table> getTableObjectsInternal(
+        String dbName, List<String> tableNames, ClientCapabilities capabilities)
+            throws MetaException, InvalidOperationException, UnknownDBException {
+      if (isInTest) {
+        assertClientHasCapability(capabilities, ClientCapability.TEST_CAPABILITY,
+            "Hive tests", "get_table_objects_by_name_req");
+      }
       List<Table> tables = new ArrayList<Table>();
       startMultiTableFunction("get_multi_table", dbName, tableNames);
       Exception ex = null;
@@ -2027,6 +2080,23 @@ public class HiveMetaStore extends ThriftHiveMetastore {
         endFunction("get_multi_table", tables != null, ex, join(tableNames, ","));
       }
       return tables;
+    }
+
+    private void assertClientHasCapability(ClientCapabilities client,
+        ClientCapability value, String what, String call) throws MetaException {
+      if (!doesClientHaveCapability(client, value)) {
+        throw new MetaException("Your client does not appear to support " + what + ". To skip"
+            + " capability checks, please set " + ConfVars.METASTORE_CAPABILITY_CHECK.varname
+            + " to false. This setting can be set globally, or on the client for the current"
+            + " metastore session. Note that this may lead to incorrect results, data loss,"
+            + " undefined behavior, etc. if your client is actually incompatible. You can also"
+            + " specify custom client capabilities via " + call + " API.");
+      }
+    }
+
+    private boolean doesClientHaveCapability(ClientCapabilities client, ClientCapability value) {
+      if (!HiveConf.getBoolVar(getConf(), ConfVars.METASTORE_CAPABILITY_CHECK)) return true;
+      return (client != null && client.isSetValues() && client.getValues().contains(value));
     }
 
     @Override
@@ -2315,18 +2385,33 @@ public class HiveMetaStore extends ThriftHiveMetastore {
             continue;
           }
 
-
+          final UserGroupInformation ugi;
+          try {
+            ugi = UserGroupInformation.getCurrentUser();
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
           partFutures.add(threadPool.submit(new Callable() {
             @Override
             public Partition call() throws Exception {
-              boolean madeDir = createLocationForAddedPartition(table, part);
-              if (addedPartitions.put(new PartValEqWrapper(part), madeDir) != null) {
-                // Technically, for ifNotExists case, we could insert one and discard the other
-                // because the first one now "exists", but it seems better to report the problem
-                // upstream as such a command doesn't make sense.
-                throw new MetaException("Duplicate partitions in the list: " + part);
-              }
-              initializeAddedPartition(table, part, madeDir);
+              ugi.doAs(new PrivilegedExceptionAction<Object>() {
+                @Override
+                public Object run() throws Exception {
+                  try {
+                    boolean madeDir = createLocationForAddedPartition(table, part);
+                    if (addedPartitions.put(new PartValEqWrapper(part), madeDir) != null) {
+                      // Technically, for ifNotExists case, we could insert one and discard the other
+                      // because the first one now "exists", but it seems better to report the problem
+                      // upstream as such a command doesn't make sense.
+                      throw new MetaException("Duplicate partitions in the list: " + part);
+                    }
+                    initializeAddedPartition(table, part, madeDir);
+                  } catch (MetaException e) {
+                    throw new IOException(e.getMessage(), e);
+                  }
+                  return null;
+                }
+              });
               return part;
             }
           }));
@@ -2478,16 +2563,33 @@ public class HiveMetaStore extends ThriftHiveMetastore {
             LOG.info("Not adding partition " + part + " as it already exists");
             continue;
           }
+
+          final UserGroupInformation ugi;
+          try {
+            ugi = UserGroupInformation.getCurrentUser();
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
           partFutures.add(threadPool.submit(new Callable() {
             @Override public Object call() throws Exception {
-              boolean madeDir = createLocationForAddedPartition(table, part);
-              if (addedPartitions.put(new PartValEqWrapperLite(part), madeDir) != null) {
-                // Technically, for ifNotExists case, we could insert one and discard the other
-                // because the first one now "exists", but it seems better to report the problem
-                // upstream as such a command doesn't make sense.
-                throw new MetaException("Duplicate partitions in the list: " + part);
-              }
-              initializeAddedPartition(table, part, madeDir);
+              ugi.doAs(new PrivilegedExceptionAction<Object>() {
+                @Override
+                public Object run() throws Exception {
+                  try {
+                    boolean madeDir = createLocationForAddedPartition(table, part);
+                    if (addedPartitions.put(new PartValEqWrapperLite(part), madeDir) != null) {
+                      // Technically, for ifNotExists case, we could insert one and discard the other
+                      // because the first one now "exists", but it seems better to report the problem
+                      // upstream as such a command doesn't make sense.
+                      throw new MetaException("Duplicate partitions in the list: " + part);
+                    }
+                    initializeAddedPartition(table, part, madeDir);
+                  } catch (MetaException e) {
+                    throw new IOException(e.getMessage(), e);
+                  }
+                  return null;
+                }
+              });
               return part;
             }
           }));
